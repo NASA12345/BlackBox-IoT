@@ -1,0 +1,152 @@
+.trip-form-container {
+  margin: 20px 0;
+}
+
+.trip-form-card {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.trip-form-card h3 {
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.trip-form-card h4 {
+  margin-top: 20px;
+  margin-bottom: 15px;
+  color: #555;
+  font-size: 14px;
+}
+
+.geo-section {
+  background: #f9f9f9;
+  padding: 15px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.geo-section .form-group {
+  margin-bottom: 0;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.form-actions button {
+  flex: 1;
+}
+
+/* Trip Cards Grid */
+.trips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.trip-card {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.trip-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.trip-card.active {
+  border-color: #667eea;
+  background: #f8f9ff;
+}
+
+.trip-card h3 {
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.trip-card p {
+  color: #666;
+  font-size: 14px;
+  margin: 5px 0;
+}
+
+.trip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.trip-header h3 {
+  margin: 0;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-badge.created {
+  background: #e7f3ff;
+  color: #0066cc;
+}
+
+.status-badge.assigned {
+  background: #fff4e6;
+  color: #f59e0b;
+}
+
+.status-badge.active {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.status-badge.completed {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.status-badge.cancelled {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.trip-locations {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+}
+
+.btn-view-details {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.btn-view-details:hover {
+  background: #5568d3;
+}
