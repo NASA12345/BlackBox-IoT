@@ -55,9 +55,12 @@ const TripModal = ({ trip, onClose }) => {
     switch (type) {
       case 'temperature':
         return 'warning';
+      case 'humidity':
+        return 'warning';
       case 'tamper':
         return 'destructive';
-      case 'impact':
+      case 'acceleration':
+      case 'gyroscope':
         return 'destructive';
       case 'geofence':
         return 'warning';
@@ -70,15 +73,27 @@ const TripModal = ({ trip, onClose }) => {
     switch (type) {
       case 'temperature':
         return '🌡️';
+      case 'humidity':
+        return '💧';
       case 'tamper':
         return '🔓';
-      case 'impact':
+      case 'acceleration':
         return '💥';
+      case 'gyroscope':
+        return '🌀';
       case 'geofence':
         return '📍';
       default:
         return '⚠️';
     }
+  };
+
+  const getGyroMagnitude = (data) => {
+    const gx = Number(data?.gx);
+    const gy = Number(data?.gy);
+    const gz = Number(data?.gz);
+    if (![gx, gy, gz].every(Number.isFinite)) return 0;
+    return Math.sqrt(gx * gx + gy * gy + gz * gz);
   };
 
   return (
@@ -265,6 +280,21 @@ const TripModal = ({ trip, onClose }) => {
                         </div>
                       </div>
 
+                      <div className="p-2 bg-indigo-50 rounded">
+                        <p className="text-xs text-gray-600 mb-1">🌀 Gyroscope (rad/s)</p>
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div>
+                            <p className="font-semibold">X: {Number(data.gx ?? 0).toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <p className="font-semibold">Y: {Number(data.gy ?? 0).toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <p className="font-semibold">Z: {Number(data.gz ?? 0).toFixed(2)}</p>
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Status Indicators */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <Alert
@@ -277,11 +307,11 @@ const TripModal = ({ trip, onClose }) => {
                         </Alert>
 
                         <Alert
-                          variant={data.impact ? 'destructive' : 'default'}
-                          className={data.impact ? 'py-2' : 'py-2 border-green-200 bg-green-50 text-green-800'}
+                          variant={getGyroMagnitude(data) > 3 ? 'destructive' : 'default'}
+                          className={getGyroMagnitude(data) > 3 ? 'py-2' : 'py-2 border-green-200 bg-green-50 text-green-800'}
                         >
                           <AlertDescription className="text-xs font-medium">
-                            {data.impact ? '💥 Impact Detected' : '✅ No Impact'}
+                            {getGyroMagnitude(data) > 3 ? '🌀 High Gyro Motion' : '✅ Gyro Normal'}
                           </AlertDescription>
                         </Alert>
                       </div>

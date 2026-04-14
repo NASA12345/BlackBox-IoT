@@ -4,9 +4,7 @@ import {
   getUnassignedTrips,
   assignTripToDriver,
   updateTripStatus,
-  addAlert,
   addTrackingData,
-  checkGeofenceViolation,
 } from '../services/firestoreService';
 import bluetoothService from '../services/bluetoothService';
 import { useAuth } from '../contexts/AuthContext';
@@ -172,10 +170,9 @@ const DriverDashboard = () => {
           };
 
           await addTrackingData(latestTrip.id, trackingPayload);
-          await checkForAlerts(trackingPayload, latestTrip);
         } catch (callbackError) {
           console.error('Error processing BLE payload:', callbackError);
-          setError('Failed to write tracking/alerts. Check Firestore rules and console logs.');
+          setError('Failed to write tracking data/alerts. Check Firestore rules and console logs.');
         }
       });
 
@@ -186,61 +183,6 @@ const DriverDashboard = () => {
       setBtConnected(false);
     } finally {
       setBtLoading(false);
-    }
-  };
-
-  // Check for alert conditions
-  const checkForAlerts = async (trackingData, trip) => {
-    try {
-      // Alert for temperature
-      if (trackingData.temp > 35 || trackingData.temp < 5) {
-        await addAlert(trip.id, {
-          type: 'temperature',
-          message: `Temperature alert: ${trackingData.temp}°C`,
-          value: trackingData.temp,
-        });
-      }
-
-      // Alert for tamper
-      if (trackingData.tamper) {
-        await addAlert(trip.id, {
-          type: 'tamper',
-          message: 'Tamper detected on shipment',
-          value: 1,
-        });
-      }
-
-      // Alert for impact
-      if (trackingData.impact) {
-        await addAlert(trip.id, {
-          type: 'impact',
-          message: 'High impact/acceleration detected',
-          value: 1,
-        });
-      }
-
-      // Alert for geofence violations
-      if (
-        trip.startGeofence &&
-        typeof trackingData.latitude === 'number' &&
-        typeof trackingData.longitude === 'number' &&
-        !checkGeofenceViolation(
-        trackingData.latitude,
-        trackingData.longitude,
-        trip.startGeofence.latitude,
-        trip.startGeofence.longitude,
-        trip.startGeofence.radiusKm
-      ) &&
-        trip.status === 'active'
-      ) {
-        await addAlert(trip.id, {
-          type: 'geofence',
-          message: 'Outside start location geofence',
-          value: 1,
-        });
-      }
-    } catch (err) {
-      console.error('Error checking alerts:', err);
     }
   };
 
@@ -591,11 +533,20 @@ const DriverDashboard = () => {
                             </CardContent>
                           </Card>
 
-                          <Card className={sensorData.impact ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}>
+                          <Card className="bg-indigo-50 border-indigo-200">
                             <CardContent className="pt-3">
-                              <p className="text-xs text-gray-600 mb-1">💥 Impact</p>
-                              <p className={`text-xl font-bold ${sensorData.impact ? 'text-red-600' : 'text-green-600'}`}>
-                                {sensorData.impact ? '⚠️ ALERT' : '✅ OK'}
+                              <p className="text-xs text-gray-600 mb-1">🌀 Gyroscope (rad/s)</p>
+                              <p className="text-sm font-bold text-indigo-700">
+                                X:{Number(sensorData.gx ?? 0).toFixed(2)} Y:{Number(sensorData.gy ?? 0).toFixed(2)} Z:{Number(sensorData.gz ?? 0).toFixed(2)}
+                              </p>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="bg-slate-50 border-slate-200 col-span-2">
+                            <CardContent className="pt-3">
+                              <p className="text-xs text-gray-600 mb-1">📊 Accelerometer (m/s²)</p>
+                              <p className="text-sm font-bold text-slate-700">
+                                X:{Number(sensorData.ax ?? 0).toFixed(2)} Y:{Number(sensorData.ay ?? 0).toFixed(2)} Z:{Number(sensorData.az ?? 0).toFixed(2)}
                               </p>
                             </CardContent>
                           </Card>

@@ -18,6 +18,8 @@ const CreateTrip = ({ onTripCreated }) => {
   const [activeSection, setActiveSection] = useState('details'); // details, start, end
   const [tripName, setTripName] = useState('');
   const [description, setDescription] = useState('');
+  const [temperatureThreshold, setTemperatureThreshold] = useState('35');
+  const [humidityThreshold, setHumidityThreshold] = useState('70');
   
   // Start Geofence
   const [startLat, setStartLat] = useState(DEFAULT_LOCATION.latitude);
@@ -73,6 +75,10 @@ const CreateTrip = ({ onTripCreated }) => {
       const tripId = await createTrip(currentUser.uid, {
         tripName,
         description,
+        alertThresholds: {
+          temperatureMax: parseFloat(temperatureThreshold || '35'),
+          humidityMax: parseFloat(humidityThreshold || '70'),
+        },
         startGeofence: {
           latitude: parseFloat(resolvedStartLat),
           longitude: parseFloat(resolvedStartLong),
@@ -90,6 +96,8 @@ const CreateTrip = ({ onTripCreated }) => {
       // Reset form
       setTripName('');
       setDescription('');
+      setTemperatureThreshold('35');
+      setHumidityThreshold('70');
       setStartLat(DEFAULT_LOCATION.latitude);
       setStartLong(DEFAULT_LOCATION.longitude);
       setStartRadius('0.5');
@@ -194,6 +202,33 @@ const CreateTrip = ({ onTripCreated }) => {
                     placeholder="Additional details about your trip"
                     className="flex min-h-[110px] w-full rounded-md border border-blue-200 bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-2 border-blue-300 pl-1 ml-1 pb-1">
+                    <Label htmlFor="temperatureThreshold">Temperature Threshold (°C)</Label>
+                    <Input
+                      id="temperatureThreshold"
+                      type="number"
+                      step="0.1"
+                      value={temperatureThreshold}
+                      onChange={(e) => setTemperatureThreshold(e.target.value)}
+                      placeholder="35"
+                      className="border-blue-200"
+                    />
+                  </div>
+                  <div className="space-y-2 border-blue-300 pl-1 ml-1 pb-1">
+                    <Label htmlFor="humidityThreshold">Humidity Threshold (%)</Label>
+                    <Input
+                      id="humidityThreshold"
+                      type="number"
+                      step="0.1"
+                      value={humidityThreshold}
+                      onChange={(e) => setHumidityThreshold(e.target.value)}
+                      placeholder="70"
+                      className="border-blue-200"
+                    />
+                  </div>
                 </div>
               </div>
             )}

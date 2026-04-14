@@ -16,6 +16,15 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
+const DEFAULT_ALERT_THRESHOLDS = {
+  temperatureMax: 35,
+  humidityMax: 70,
+};
+
+const ACCELERATION_THRESHOLD = 18; // m/s^2 (approx harsh shock threshold)
+const GYROSCOPE_THRESHOLD = 3; // rad/s
+const ALERT_COOLDOWN_MS = 2 * 60 * 1000;
+
 // ========== USER OPERATIONS ==========
 
 export const createUserProfile = async (userId, userData) => {
@@ -69,9 +78,22 @@ export const getDriverProfile = async (driverId) => {
 
 export const createTrip = async (userId, tripData) => {
   try {
+    const { alertThresholds, ...restTripData } = tripData || {};
+    const normalizedThresholds = {
+      temperatureMax:
+        Number.isFinite(Number(alertThresholds?.temperatureMax))
+          ? Number(alertThresholds.temperatureMax)
+          : DEFAULT_ALERT_THRESHOLDS.temperatureMax,
+      humidityMax:
+        Number.isFinite(Number(alertThresholds?.humidityMax))
+          ? Number(alertThresholds.humidityMax)
+          : DEFAULT_ALERT_THRESHOLDS.humidityMax,
+    };
+
     const tripRef = await addDoc(collection(db, 'trips'), {
       userId,
-      ...tripData,
+      ...restTripData,
+      alertThresholds: normalizedThresholds,
       status: 'created', // created, assigned, active, completed, cancelled
       createdAt: serverTimestamp(),
       assignedDriver: null,
@@ -201,16 +223,161 @@ const enrichTripsWithDriverNames = async (trips) => {
 
 export const addTrackingData = async (tripId, trackingData) => {
   try {
-    await updateDoc(doc(db, 'trips', tripId), {
-      trackingData: arrayUnion({
-        ...trackingData,
-        timestamp: Timestamp.now(),
-      }),
+    const tripRef = doc(db, 'trips', tripId);
+    const tripSnap = await getDoc(tripRef);
+
+    if (!tripSnap.exists()) {
+      throw new Error('Trip not found');
+    }
+
+    const trip = { id: tripSnap.id, ...tripSnap.data() };
+    const trackingEntry = {
+      ...trackingData,
+      timestamp: Timestamp.now(),
+    };
+
+    await updateDoc(tripRef, {
+      trackingData: arrayUnion(trackingEntry),
     });
+
+    const generatedAlerts = buildAlertsFromTracking(trip, trackingData);
+    if (generatedAlerts.length > 0) {
+      for (const alertData of generatedAlerts) {
+        await addAlert(tripId, alertData);
+      }
+    }
   } catch (error) {
     console.error('Error adding tracking data:', error);
     throw error;
   }
+};
+
+const toMillis = (value) => {
+  if (!value) return 0;
+  if (typeof value?.toDate === 'function') return value.toDate().getTime();
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const isTruthySensorFlag = (value) => value === true || value === 1 || value === '1';
+
+const buildAlertsFromTracking = (trip, trackingData) => {
+  const alerts = [];
+  const tripAlerts = Array.isArray(trip.alerts) ? trip.alerts : [];
+  const tripTracking = Array.isArray(trip.trackingData) ? trip.trackingData : [];
+  const thresholds = {
+    temperatureMax:
+      Number.isFinite(Number(trip.alertThresholds?.temperatureMax))
+        ? Number(trip.alertThresholds.temperatureMax)
+        : DEFAULT_ALERT_THRESHOLDS.temperatureMax,
+    humidityMax:
+      Number.isFinite(Number(trip.alertThresholds?.humidityMax))
+        ? Number(trip.alertThresholds.humidityMax)
+        : DEFAULT_ALERT_THRESHOLDS.humidityMax,
+  };
+
+  const canSendAlert = (type) => {
+    const latestForType = tripAlerts
+      .filter((alert) => alert?.type === type)
+      .sort((a, b) => toMillis(b?.timestamp) - toMillis(a?.timestamp))[0];
+
+    if (!latestForType) return true;
+    return Date.now() - toMillis(latestForType.timestamp) > ALERT_COOLDOWN_MS;
+  };
+
+  const temp = Number(trackingData?.temp);
+  if (Number.isFinite(temp) && temp > thresholds.temperatureMax && canSendAlert('temperature')) {
+    alerts.push({
+      type: 'temperature',
+      message: `Temperature exceeded threshold (${temp.toFixed(1)}°C > ${thresholds.temperatureMax.toFixed(1)}°C)`,
+      value: temp,
+    });
+  }
+
+  const humidity = Number(trackingData?.humidity);
+  if (Number.isFinite(humidity) && humidity > thresholds.humidityMax && canSendAlert('humidity')) {
+    alerts.push({
+      type: 'humidity',
+      message: `Humidity exceeded threshold (${humidity.toFixed(1)}% > ${thresholds.humidityMax.toFixed(1)}%)`,
+      value: humidity,
+    });
+  }
+
+  const ax = Number(trackingData?.ax);
+  const ay = Number(trackingData?.ay);
+  const az = Number(trackingData?.az);
+  if ([ax, ay, az].every(Number.isFinite)) {
+    const accMag = Math.sqrt(ax * ax + ay * ay + az * az);
+    if (accMag > ACCELERATION_THRESHOLD && canSendAlert('acceleration')) {
+      alerts.push({
+        type: 'acceleration',
+        message: `High acceleration detected (${accMag.toFixed(2)} m/s²)`,
+        value: accMag,
+      });
+    }
+  }
+
+  const gx = Number(trackingData?.gx);
+  const gy = Number(trackingData?.gy);
+  const gz = Number(trackingData?.gz);
+  if ([gx, gy, gz].every(Number.isFinite)) {
+    const gyroMag = Math.sqrt(gx * gx + gy * gy + gz * gz);
+    if (gyroMag > GYROSCOPE_THRESHOLD && canSendAlert('gyroscope')) {
+      alerts.push({
+        type: 'gyroscope',
+        message: `High angular motion detected (${gyroMag.toFixed(2)} rad/s)`,
+        value: gyroMag,
+      });
+    }
+  }
+
+  const tamperNow = isTruthySensorFlag(trackingData?.tamper);
+  const previousTracking = tripTracking.length > 0 ? tripTracking[tripTracking.length - 1] : null;
+  const tamperPrev = isTruthySensorFlag(previousTracking?.tamper);
+
+  const lat = Number(trackingData?.latitude);
+  const long = Number(trackingData?.longitude);
+  const hasLocation = Number.isFinite(lat) && Number.isFinite(long);
+
+  const inStartGeofence =
+    hasLocation &&
+    trip?.startGeofence &&
+    Number.isFinite(Number(trip.startGeofence.latitude)) &&
+    Number.isFinite(Number(trip.startGeofence.longitude)) &&
+    Number.isFinite(Number(trip.startGeofence.radiusKm)) &&
+    checkGeofenceViolation(
+      lat,
+      long,
+      Number(trip.startGeofence.latitude),
+      Number(trip.startGeofence.longitude),
+      Number(trip.startGeofence.radiusKm)
+    );
+
+  const inEndGeofence =
+    hasLocation &&
+    trip?.endGeofence &&
+    Number.isFinite(Number(trip.endGeofence.latitude)) &&
+    Number.isFinite(Number(trip.endGeofence.longitude)) &&
+    Number.isFinite(Number(trip.endGeofence.radiusKm)) &&
+    checkGeofenceViolation(
+      lat,
+      long,
+      Number(trip.endGeofence.latitude),
+      Number(trip.endGeofence.longitude),
+      Number(trip.endGeofence.radiusKm)
+    );
+
+  const outsideBothGeofences = hasLocation ? !inStartGeofence && !inEndGeofence : false;
+
+  if (tamperNow && !tamperPrev && outsideBothGeofences && canSendAlert('tamper')) {
+    alerts.push({
+      type: 'tamper',
+      message: 'Seal tampering detected outside start/end geofence',
+      value: 1,
+    });
+  }
+
+  return alerts;
 };
 
 export const subscribeToTrackingData = (tripId, callback) => {
