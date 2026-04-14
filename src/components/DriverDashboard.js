@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   getDriverTrips,
   getUnassignedTrips,
@@ -37,7 +37,7 @@ const DriverDashboard = () => {
     activeTripRef.current = activeTrip;
   }, [activeTrip]);
 
-  const loadTrips = async () => {
+  const loadTrips = useCallback(async () => {
     if (!currentUser) return;
 
     try {
@@ -51,14 +51,14 @@ const DriverDashboard = () => {
       console.error('Error fetching trips:', err);
       setError('Failed to load trips');
     }
-  };
+  }, [currentUser]);
 
   // Fetch driver trips
   useEffect(() => {
     if (!currentUser) return;
 
     loadTrips();
-  }, [currentUser]);
+  }, [currentUser, loadTrips]);
 
   const handleSelfAssignTrip = async (tripId) => {
     if (!currentUser) return;

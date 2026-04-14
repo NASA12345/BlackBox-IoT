@@ -6,7 +6,6 @@ import { Input } from '../lib/components/Input';
 import { Label } from '../lib/components/Label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../lib/components/Card';
 import { Alert, AlertDescription } from '../lib/components/Alert';
-import { Badge } from '../lib/components/Badge';
 
 const Signup = () => {
   const [roleType, setRoleType] = useState('user'); // 'user' or 'driver'

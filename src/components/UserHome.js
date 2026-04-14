@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getUserTrips } from '../services/firestoreService';
 import { useAuth } from '../contexts/AuthContext';
 import CreateTrip from './CreateTrip';
@@ -18,7 +18,7 @@ const UserHome = () => {
   const { currentUser, logout } = useAuth();
 
   // Fetch trips on mount and when component updates
-  const fetchTrips = async () => {
+  const fetchTrips = useCallback(async () => {
     if (!currentUser) return;
 
     try {
@@ -30,11 +30,11 @@ const UserHome = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser]);
 
   useEffect(() => {
     fetchTrips();
-  }, [currentUser]);
+  }, [fetchTrips]);
 
   const handleLogout = async () => {
     try {
@@ -44,7 +44,7 @@ const UserHome = () => {
     }
   };
 
-  const handleTripCreated = (tripId) => {
+  const handleTripCreated = () => {
     fetchTrips();
   };
 

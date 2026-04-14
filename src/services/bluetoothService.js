@@ -120,4 +120,6 @@ class BluetoothService {
   }
 }
 
-export default new BluetoothService();
+const bluetoothService = new BluetoothService();
+
+export default bluetoothService;
