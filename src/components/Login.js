@@ -6,6 +6,7 @@ import { Input } from '../lib/components/Input';
 import { Label } from '../lib/components/Label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../lib/components/Card';
 import { Alert, AlertDescription } from '../lib/components/Alert';
+import { useToast } from '../contexts/ToastContext';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -14,6 +15,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login, currentUser, userRole, loading: authLoading } = useAuth();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!authLoading && currentUser && userRole) {
@@ -32,8 +34,18 @@ const Login = () => {
 
     try {
       await login(email, password);
+      toast({
+        title: 'Welcome back',
+        description: 'Login successful.',
+        variant: 'success',
+      });
     } catch (err) {
       setError(err.message || 'Failed to login');
+      toast({
+        title: 'Login failed',
+        description: err.message || 'Failed to login',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }

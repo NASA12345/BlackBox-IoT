@@ -12,6 +12,8 @@ import { Button } from '../lib/components/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../lib/components/Card';
 import { Badge } from '../lib/components/Badge';
 import { Alert, AlertDescription } from '../lib/components/Alert';
+import { Modal } from '../lib/components/Modal';
+import { useToast } from '../contexts/ToastContext';
 
 const DriverDashboard = () => {
   const [trips, setTrips] = useState([]);
@@ -24,8 +26,11 @@ const DriverDashboard = () => {
   const [gpsData, setGpsData] = useState(null);
   const [activeSection, setActiveSection] = useState('controls');
   const [tripListView, setTripListView] = useState('assigned');
+  const [showEndTripConfirm, setShowEndTripConfirm] = useState(false);
+  const [showBluetoothConnectConfirm, setShowBluetoothConnectConfirm] = useState(false);
   const [error, setError] = useState('');
   const { currentUser, logout } = useAuth();
+  const { toast } = useToast();
   const gpsDataRef = useRef(null);
   const activeTripRef = useRef(null);
 
@@ -50,8 +55,13 @@ const DriverDashboard = () => {
     } catch (err) {
       console.error('Error fetching trips:', err);
       setError('Failed to load trips');
+      toast({
+        title: 'Failed to load trips',
+        description: err.message || 'Unable to fetch trips',
+        variant: 'destructive',
+      });
     }
-  }, [currentUser]);
+  }, [currentUser, toast]);
 
   // Fetch driver trips
   useEffect(() => {
@@ -68,8 +78,18 @@ const DriverDashboard = () => {
     try {
       await assignTripToDriver(tripId, currentUser.uid);
       await loadTrips();
+      toast({
+        title: 'Trip assigned',
+        description: 'Trip assigned to your account.',
+        variant: 'success',
+      });
     } catch (err) {
       setError(err.message || 'Failed to assign trip');
+      toast({
+        title: 'Assignment failed',
+        description: err.message || 'Failed to assign trip',
+        variant: 'destructive',
+      });
     } finally {
       setAssigningTripId(null);
     }
@@ -78,19 +98,37 @@ const DriverDashboard = () => {
   const handleLogout = async () => {
     try {
       await logout();
+      toast({
+        title: 'Logged out',
+        description: 'You have been signed out.',
+        variant: 'success',
+      });
     } catch (err) {
       setError('Failed to logout: ' + err.message);
+      toast({
+        title: 'Logout failed',
+        description: err.message || 'Failed to logout',
+        variant: 'destructive',
+      });
     }
   };
 
   const handleEndTrip = async () => {
     if (!activeTrip) {
       setError('Please select a trip first');
+      toast({
+        title: 'No active trip',
+        description: 'Please select a trip first.',
+        variant: 'warning',
+      });
       return;
     }
 
-    const shouldEndTrip = window.confirm('Are you sure you want to end this trip?');
-    if (!shouldEndTrip) return;
+    setShowEndTripConfirm(true);
+  };
+
+  const confirmEndTrip = async () => {
+    setShowEndTripConfirm(false);
 
     setError('');
     try {
@@ -104,9 +142,28 @@ const DriverDashboard = () => {
       setGpsData(null);
       setActiveTrip(null);
       await loadTrips();
+      toast({
+        title: 'Trip completed',
+        description: 'The trip has been marked as completed.',
+        variant: 'success',
+      });
     } catch (err) {
       setError(err.message || 'Failed to end trip');
+      toast({
+        title: 'End trip failed',
+        description: err.message || 'Failed to end trip',
+        variant: 'destructive',
+      });
     }
+  };
+
+  const cancelEndTrip = () => {
+    setShowEndTripConfirm(false);
+    toast({
+      title: 'Trip end cancelled',
+      description: 'Trip is still active.',
+      variant: 'warning',
+    });
   };
 
   // Start GPS tracking
@@ -124,6 +181,11 @@ const DriverDashboard = () => {
         (error) => {
           console.error('GPS error:', error);
           setError('GPS error: ' + error.message);
+          toast({
+            title: 'GPS error',
+            description: error.message || 'Unable to fetch location.',
+            variant: 'destructive',
+          });
         }
       );
 
@@ -132,11 +194,22 @@ const DriverDashboard = () => {
   };
 
   // Connect to ESP32
-  const handleBluetoothConnect = async () => {
+  const handleBluetoothConnect = () => {
     if (!activeTrip) {
       setError('Please select a trip first');
+      toast({
+        title: 'No active trip',
+        description: 'Please select a trip first.',
+        variant: 'warning',
+      });
       return;
     }
+
+    setShowBluetoothConnectConfirm(true);
+  };
+
+  const confirmBluetoothConnect = async () => {
+    setShowBluetoothConnectConfirm(false);
 
     setBtLoading(true);
     setError('');
@@ -150,6 +223,11 @@ const DriverDashboard = () => {
       // Connect to device
       await bluetoothService.connectToDevice();
       setBtConnected(true);
+      toast({
+        title: 'Bluetooth connected',
+        description: 'Connected to ESP32 device.',
+        variant: 'success',
+      });
 
       // Set up data callback
       bluetoothService.setDataCallback(async (data) => {
@@ -173,6 +251,11 @@ const DriverDashboard = () => {
         } catch (callbackError) {
           console.error('Error processing BLE payload:', callbackError);
           setError('Failed to write tracking data/alerts. Check Firestore rules and console logs.');
+          toast({
+            title: 'Tracking write failed',
+            description: callbackError.message || 'Unable to save tracking data.',
+            variant: 'destructive',
+          });
         }
       });
 
@@ -181,9 +264,23 @@ const DriverDashboard = () => {
     } catch (err) {
       setError(err.message || 'Failed to connect to Bluetooth');
       setBtConnected(false);
+      toast({
+        title: 'Bluetooth connection failed',
+        description: err.message || 'Failed to connect to Bluetooth',
+        variant: 'destructive',
+      });
     } finally {
       setBtLoading(false);
     }
+  };
+
+  const cancelBluetoothConnect = () => {
+    setShowBluetoothConnectConfirm(false);
+    toast({
+      title: 'Bluetooth connect cancelled',
+      description: 'Connection attempt was cancelled.',
+      variant: 'warning',
+    });
   };
 
   // Disconnect Bluetooth
@@ -193,8 +290,18 @@ const DriverDashboard = () => {
       setBtConnected(false);
       setSensorData(null);
       setGpsData(null);
+      toast({
+        title: 'Bluetooth disconnected',
+        description: 'ESP32 has been disconnected.',
+        variant: 'warning',
+      });
     } catch (err) {
       setError('Failed to disconnect: ' + err.message);
+      toast({
+        title: 'Disconnect failed',
+        description: err.message || 'Failed to disconnect Bluetooth',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -616,6 +723,48 @@ const DriverDashboard = () => {
           </div>
         </div>
       </div>
+
+      <Modal
+        isOpen={showEndTripConfirm}
+        onClose={cancelEndTrip}
+        title="End Trip?"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            Are you sure you want to end this trip?
+          </p>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={cancelEndTrip}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={confirmEndTrip}>
+              Yes, End Trip
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showBluetoothConnectConfirm}
+        onClose={cancelBluetoothConnect}
+        title="Connect to ESP32?"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            Start Bluetooth pairing for this trip now?
+          </p>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={cancelBluetoothConnect}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={confirmBluetoothConnect}>
+              Continue
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

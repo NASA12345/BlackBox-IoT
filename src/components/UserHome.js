@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../li
 import { Badge } from '../lib/components/Badge';
 import { Alert, AlertDescription } from '../lib/components/Alert';
 import { Skeleton } from '../lib/components/Skeleton';
+import { useToast } from '../contexts/ToastContext';
 
 const UserHome = () => {
   const [trips, setTrips] = useState([]);
@@ -16,6 +17,7 @@ const UserHome = () => {
   const [error, setError] = useState('');
   const [tripListView, setTripListView] = useState('assigned');
   const { currentUser, logout } = useAuth();
+  const { toast } = useToast();
 
   // Fetch trips on mount and when component updates
   const fetchTrips = useCallback(async () => {
@@ -27,10 +29,15 @@ const UserHome = () => {
       setTrips(userTrips);
     } catch (err) {
       setError('Failed to fetch trips: ' + err.message);
+      toast({
+        title: 'Failed to load trips',
+        description: err.message || 'Unable to fetch trips',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, toast]);
 
   useEffect(() => {
     fetchTrips();
@@ -39,8 +46,18 @@ const UserHome = () => {
   const handleLogout = async () => {
     try {
       await logout();
+      toast({
+        title: 'Logged out',
+        description: 'You have been signed out.',
+        variant: 'success',
+      });
     } catch (err) {
       setError('Failed to logout: ' + err.message);
+      toast({
+        title: 'Logout failed',
+        description: err.message || 'Failed to logout',
+        variant: 'destructive',
+      });
     }
   };
 

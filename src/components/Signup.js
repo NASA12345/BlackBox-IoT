@@ -6,6 +6,7 @@ import { Input } from '../lib/components/Input';
 import { Label } from '../lib/components/Label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../lib/components/Card';
 import { Alert, AlertDescription } from '../lib/components/Alert';
+import { useToast } from '../contexts/ToastContext';
 
 const Signup = () => {
   const [roleType, setRoleType] = useState('user'); // 'user' or 'driver'
@@ -20,6 +21,7 @@ const Signup = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { signUpAsUser, signUpAsDriver } = useAuth();
+  const { toast } = useToast();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,11 +29,21 @@ const Signup = () => {
 
     if (password !== confirmPassword) {
       setError('Passwords do not match');
+      toast({
+        title: 'Signup failed',
+        description: 'Passwords do not match',
+        variant: 'destructive',
+      });
       return;
     }
 
     if (password.length < 6) {
       setError('Password must be at least 6 characters');
+      toast({
+        title: 'Signup failed',
+        description: 'Password must be at least 6 characters',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -40,13 +52,28 @@ const Signup = () => {
     try {
       if (roleType === 'user') {
         await signUpAsUser(email, password, fullName, phone);
+        toast({
+          title: 'Account created',
+          description: 'User account created successfully.',
+          variant: 'success',
+        });
         navigate('/home');
       } else {
         await signUpAsDriver(email, password, fullName, phone, licenseNumber, vehicleNumber);
+        toast({
+          title: 'Account created',
+          description: 'Driver account created successfully.',
+          variant: 'success',
+        });
         navigate('/driver-dashboard');
       }
     } catch (err) {
       setError(err.message || 'Failed to signup');
+      toast({
+        title: 'Signup failed',
+        description: err.message || 'Failed to signup',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }

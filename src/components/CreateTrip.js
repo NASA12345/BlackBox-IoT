@@ -7,6 +7,7 @@ import { Label } from '../lib/components/Label';
 import { Modal, ModalBody } from '../lib/components/Modal';
 import { Alert, AlertDescription } from '../lib/components/Alert';
 import LocationMap from './LocationMap';
+import { useToast } from '../contexts/ToastContext';
 
 const DEFAULT_LOCATION = {
   latitude: '28.610250',
@@ -34,6 +35,7 @@ const CreateTrip = ({ onTripCreated }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { currentUser } = useAuth();
+  const { toast } = useToast();
 
   const handleStartLocationChange = (lat, long) => {
     setStartLat(lat.toString());
@@ -66,6 +68,11 @@ const CreateTrip = ({ onTripCreated }) => {
     
     if (!tripName) {
       setError('All fields are required');
+      toast({
+        title: 'Create trip failed',
+        description: 'Trip name is required.',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -92,6 +99,11 @@ const CreateTrip = ({ onTripCreated }) => {
       });
 
       onTripCreated(tripId);
+      toast({
+        title: 'Trip created',
+        description: 'Your trip has been created successfully.',
+        variant: 'success',
+      });
       
       // Reset form
       setTripName('');
@@ -108,6 +120,11 @@ const CreateTrip = ({ onTripCreated }) => {
       setActiveSection('details');
     } catch (err) {
       setError(err.message || 'Failed to create trip');
+      toast({
+        title: 'Create trip failed',
+        description: err.message || 'Failed to create trip',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
