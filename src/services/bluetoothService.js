@@ -1,8 +1,8 @@
 // Bluetooth service for ESP32 connection (Driver Side)
 // This service handles BLE communication with the ESP32 blackbox
 
-const SERVICE_UUID = '12345678-1234-1234-1234-1234567890ab';
-const CHARACTERISTIC_UUID = 'abcd1234-5678-1234-5678-abcdef123456';
+const SERVICE_UUID = process.env.REACT_APP_BLE_SERVICE_UUID;
+const CHARACTERISTIC_UUID = process.env.REACT_APP_BLE_CHARACTERISTIC_UUID;
 
 class BluetoothService {
   constructor() {
