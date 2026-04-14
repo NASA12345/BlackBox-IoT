@@ -93,7 +93,7 @@ export const getUserTrips = async (userId) => {
     querySnapshot.forEach((doc) => {
       trips.push({ id: doc.id, ...doc.data() });
     });
-    return trips;
+    return await enrichTripsWithDriverNames(trips);
   } catch (error) {
     console.error('Error fetching user trips:', error);
     throw error;
@@ -103,7 +103,11 @@ export const getUserTrips = async (userId) => {
 export const getTripById = async (tripId) => {
   try {
     const docSnap = await getDoc(doc(db, 'trips', tripId));
-    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
+    if (!docSnap.exists()) return null;
+
+    const trip = { id: docSnap.id, ...docSnap.data() };
+    const [enrichedTrip] = await enrichTripsWithDriverNames([trip]);
+    return enrichedTrip;
   } catch (error) {
     console.error('Error fetching trip:', error);
     throw error;
@@ -124,8 +128,11 @@ export const updateTripStatus = async (tripId, status) => {
 
 export const assignTripToDriver = async (tripId, driverId) => {
   try {
+    const driverProfile = await getDriverProfile(driverId);
+
     await updateDoc(doc(db, 'trips', tripId), {
       assignedDriver: driverId,
+      assignedDriverName: driverProfile?.fullName || null,
       status: 'assigned',
       assignedAt: serverTimestamp(),
     });
@@ -143,7 +150,7 @@ export const getDriverTrips = async (driverId) => {
     querySnapshot.forEach((doc) => {
       trips.push({ id: doc.id, ...doc.data() });
     });
-    return trips;
+    return await enrichTripsWithDriverNames(trips);
   } catch (error) {
     console.error('Error fetching driver trips:', error);
     throw error;
@@ -161,11 +168,33 @@ export const getUnassignedTrips = async () => {
         trips.push(tripData);
       }
     });
-    return trips;
+    return await enrichTripsWithDriverNames(trips);
   } catch (error) {
     console.error('Error fetching unassigned trips:', error);
     throw error;
   }
+};
+
+const enrichTripsWithDriverNames = async (trips) => {
+  if (!Array.isArray(trips) || trips.length === 0) return trips;
+
+  const driverIds = [...new Set(trips.map((trip) => trip.assignedDriver).filter(Boolean))];
+  if (driverIds.length === 0) return trips;
+
+  const driverNameMap = new Map();
+
+  await Promise.all(
+    driverIds.map(async (driverId) => {
+      const profile = await getDriverProfile(driverId);
+      driverNameMap.set(driverId, profile?.fullName || null);
+    })
+  );
+
+  return trips.map((trip) => ({
+    ...trip,
+    assignedDriverName:
+      trip.assignedDriverName || (trip.assignedDriver ? driverNameMap.get(trip.assignedDriver) : null),
+  }));
 };
 
 // ========== TRACKING DATA OPERATIONS ==========

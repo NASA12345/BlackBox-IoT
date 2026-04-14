@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import '../styles/auth.css';
+import { Button } from '../lib/components/Button';
+import { Input } from '../lib/components/Input';
+import { Label } from '../lib/components/Label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../lib/components/Card';
+import { Alert, AlertDescription } from '../lib/components/Alert';
+import { Badge } from '../lib/components/Badge';
 
 const Signup = () => {
   const [roleType, setRoleType] = useState('user'); // 'user' or 'driver'
@@ -49,128 +54,156 @@ const Signup = () => {
   };
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
-        <h1>BlackBox Insurance</h1>
-        <h2>Create Account</h2>
-
-        <div className="role-selector">
-          <button
-            type="button"
-            className={`role-btn ${roleType === 'user' ? 'active' : ''}`}
-            onClick={() => setRoleType('user')}
-          >
-            User
-          </button>
-          <button
-            type="button"
-            className={`role-btn ${roleType === 'driver' ? 'active' : ''}`}
-            onClick={() => setRoleType('driver')}
-          >
-            Driver
-          </button>
-        </div>
-
-        {error && <div className="error-message">{error}</div>}
-
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="fullName">Full Name</label>
-            <input
-              id="fullName"
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-              placeholder="John Doe"
-            />
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-100 flex items-center justify-center p-4">
+      <Card className="w-full max-w-2xl">
+        <CardHeader className="space-y-2 text-center">
+          <div className="flex justify-center mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">
+              BB
+            </div>
           </div>
+          <CardTitle className="text-3xl font-bold">Create Your Account</CardTitle>
+          <CardDescription className="text-base">Join BlackBox Insurance to start tracking your journeys</CardDescription>
+        </CardHeader>
 
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="your@email.com"
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="phone">Phone</label>
-            <input
-              id="phone"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              required
-              placeholder="+1234567890"
-            />
-          </div>
-
-          {roleType === 'driver' && (
-            <>
-              <div className="form-group">
-                <label htmlFor="licenseNumber">License Number</label>
-                <input
-                  id="licenseNumber"
-                  type="text"
-                  value={licenseNumber}
-                  onChange={(e) => setLicenseNumber(e.target.value)}
-                  required
-                  placeholder="DL123456"
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="vehicleNumber">Vehicle Number</label>
-                <input
-                  id="vehicleNumber"
-                  type="text"
-                  value={vehicleNumber}
-                  onChange={(e) => setVehicleNumber(e.target.value)}
-                  required
-                  placeholder="ABC-1234"
-                />
-              </div>
-            </>
+        <CardContent className="space-y-6">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
 
-          <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="Min 6 characters"
-            />
+          <div className="flex gap-2 justify-center">
+            <Button
+              type="button"
+              variant={roleType === 'user' ? 'default' : 'outline'}
+              size="lg"
+              onClick={() => setRoleType('user')}
+              className="flex-1"
+            >
+              👤 User
+            </Button>
+            <Button
+              type="button"
+              variant={roleType === 'driver' ? 'default' : 'outline'}
+              size="lg"
+              onClick={() => setRoleType('driver')}
+              className="flex-1"
+            >
+              🚗 Driver
+            </Button>
           </div>
 
-          <div className="form-group">
-            <label htmlFor="confirmPassword">Confirm Password</label>
-            <input
-              id="confirmPassword"
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              placeholder="Confirm password"
-            />
-          </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="fullName">Full Name *</Label>
+                <Input
+                  id="fullName"
+                  type="text"
+                  placeholder="John Doe"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                />
+              </div>
 
-          <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? 'Creating Account...' : 'Sign Up'}
-          </button>
-        </form>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email Address *</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
 
-        <p className="auth-link">
-          Already have an account? <Link to="/login">Login</Link>
-        </p>
-      </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone Number *</Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+1 (555) 123-4567"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                required
+              />
+            </div>
+
+            {roleType === 'driver' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="space-y-2">
+                  <Label htmlFor="licenseNumber">License Number *</Label>
+                  <Input
+                    id="licenseNumber"
+                    type="text"
+                    placeholder="DL123456789"
+                    value={licenseNumber}
+                    onChange={(e) => setLicenseNumber(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="vehicleNumber">Vehicle Number *</Label>
+                  <Input
+                    id="vehicleNumber"
+                    type="text"
+                    placeholder="ABC-1234"
+                    value={vehicleNumber}
+                    onChange={(e) => setVehicleNumber(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="password">Password *</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Min. 6 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm Password *</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  placeholder="Confirm password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <Button 
+              type="submit" 
+              disabled={loading} 
+              className="w-full h-11 text-base font-semibold"
+            >
+              {loading ? 'Creating Account...' : 'Create Account'}
+            </Button>
+          </form>
+
+          <p className="text-center text-sm">
+            Already have an account?{' '}
+            <Link to="/login" className="font-semibold text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline">
+              Sign in
+            </Link>
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 };

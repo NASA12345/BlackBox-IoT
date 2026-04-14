@@ -6,7 +6,6 @@ import Login from './components/Login';
 import Signup from './components/Signup';
 import UserHome from './components/UserHome';
 import DriverDashboard from './components/DriverDashboard';
-import './App.css';
 
 function App() {
   return (
