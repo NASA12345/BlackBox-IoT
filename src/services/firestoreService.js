@@ -513,6 +513,11 @@ const buildAlertsFromTracking = (trip, trackingData, geofenceShapes) => {
   };
 
   const canSendAlert = (type) => {
+    if (type === 'tamper') {
+      const hasTamperAlert = tripAlerts.some((alert) => alert?.type === 'tamper');
+      return !hasTamperAlert;
+    }
+
     const latestForType = tripAlerts
       .filter((alert) => alert?.type === type)
       .sort((a, b) => toMillis(b?.timestamp) - toMillis(a?.timestamp))[0];
