@@ -224,12 +224,7 @@ const DriverDashboard = () => {
     setShowBluetoothConnectConfirm(true);
   };
 
-  const confirmBluetoothConnect = async () => {
-    setShowBluetoothConnectConfirm(false);
-
-    setBtLoading(true);
-    setError('');
-
+  const performBluetoothConnect = async () => {
     try {
       // Check if Bluetooth is supported
       if (!bluetoothService.isBluetoothSupported()) {
@@ -291,6 +286,41 @@ const DriverDashboard = () => {
       });
     } finally {
       setBtLoading(false);
+    }
+  };
+
+  const confirmBluetoothConnect = async () => {
+    setShowBluetoothConnectConfirm(false);
+    setBtLoading(true);
+    setError('');
+
+    await performBluetoothConnect();
+  };
+
+  const handleBluetoothReconnect = async () => {
+    setBtLoading(true);
+    setError('');
+
+    try {
+      if (btConnected) {
+        await bluetoothService.disconnect();
+      }
+
+      setBtConnected(false);
+      setSensorData(null);
+      setGpsData(null);
+      setLastPingAtMs(0);
+      setLastTrackingLostAlertAtMs(0);
+
+      await performBluetoothConnect();
+    } catch (err) {
+      setError(err.message || 'Failed to reconnect to Bluetooth');
+      setBtConnected(false);
+      toast({
+        title: 'Bluetooth reconnect failed',
+        description: err.message || 'Failed to reconnect to Bluetooth',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -656,11 +686,12 @@ const DriverDashboard = () => {
                             <span className="text-xs font-semibold text-green-700">{shouldReconnect ? 'Reconnect to ESP32' : 'Connected to ESP32'}</span>
                           </div>
                           <Button
-                            onClick={handleBluetoothDisconnect}
-                            variant="destructive"
+                            onClick={shouldReconnect ? handleBluetoothReconnect : handleBluetoothDisconnect}
+                            variant={shouldReconnect ? 'default' : 'destructive'}
+                            disabled={btLoading}
                             className="w-full gap-2 h-10 text-sm"
                           >
-                            📡 Disconnect
+                            {shouldReconnect ? '📡 Reconnect ESP32' : '📡 Disconnect'}
                           </Button>
                         </div>
                       )}

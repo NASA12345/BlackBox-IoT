@@ -21,15 +21,25 @@ const DEFAULT_MAP_PIN_ICON = L.icon({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
+  iconSize: [12, 20],
+  iconAnchor: [6, 20],
+  popupAnchor: [1, -16],
+  shadowSize: [20, 20],
+});
+
+const RED_MAP_PIN_ICON = L.icon({
+  iconRetinaUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+  iconSize: [12, 20],
+  iconAnchor: [6, 20],
+  popupAnchor: [1, -16],
+  shadowSize: [20, 20],
 });
 
 const POINT_ICON = DEFAULT_MAP_PIN_ICON;
 const SELECTED_POINT_ICON = DEFAULT_MAP_PIN_ICON;
-const CENTER_ICON = DEFAULT_MAP_PIN_ICON;
+const CENTER_ICON = RED_MAP_PIN_ICON;
 
 const createDefaultPolygonPoints = (center) => {
   const [lat, lng] = center;

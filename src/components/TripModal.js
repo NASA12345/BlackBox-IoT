@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Circle, Polygon, Polyline, CircleMarker, Tooltip, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Circle, Polygon, Polyline, CircleMarker, Tooltip, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { subscribeToAlerts, subscribeToTrackingData, getGeofencePolygonPoints } from '../services/firestoreService';
 import { Button } from '../lib/components/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../lib/components/Card';
 import { Badge } from '../lib/components/Badge';
 import { Alert, AlertDescription } from '../lib/components/Alert';
+import { Maximize2, Minimize2, MapPinned } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -17,6 +18,22 @@ L.Icon.Default.mergeOptions({
 
 const DEFAULT_MAP_CENTER = [28.61025, 77.031741];
 
+const MapResizer = ({ expandKey }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      map.invalidateSize();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [expandKey, map]);
+
+  return null;
+};
+
 const TripModal = ({ trip, onClose }) => {
   const [alerts, setAlerts] = useState([]);
   const [trackingData, setTrackingData] = useState([]);
@@ -24,6 +41,7 @@ const TripModal = ({ trip, onClose }) => {
   const [alertFilter, setAlertFilter] = useState('all');
   const [alertsLoading, setAlertsLoading] = useState(true);
   const [trackingLoading, setTrackingLoading] = useState(true);
+  const [trackingMapExpanded, setTrackingMapExpanded] = useState(false);
   const [startPolygonPoints, setStartPolygonPoints] = useState([]);
   const [endPolygonPoints, setEndPolygonPoints] = useState([]);
 
@@ -274,43 +292,39 @@ const TripModal = ({ trip, onClose }) => {
 
         {/* Tabs and Content */}
         <div className="border-b border-slate-200 bg-white px-6 py-3">
-          <div className="relative grid w-full grid-cols-3 rounded-full bg-slate-100 p-1 text-slate-600">
+          <div className="grid w-full grid-cols-3 gap-1 rounded-2xl bg-slate-100 p-1 text-slate-600 sm:gap-0">
             <span
               aria-hidden="true"
-              className={`absolute top-1 bottom-1 w-[calc(33.333%-0.33rem)] rounded-full bg-white shadow-sm transition-transform duration-300 ease-out ${
-                activeTab === 'alerts'
-                  ? 'translate-x-0 left-1'
-                  : activeTab === 'tracking'
-                    ? 'translate-x-full left-1'
-                    : 'translate-x-[200%] left-1'
-              }`}
+              className="sr-only"
             />
             <button
               type="button"
               onClick={() => setActiveTab('alerts')}
-              className={`relative z-10 inline-flex items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition-all ${
-                activeTab === 'alerts' ? 'text-slate-900' : 'hover:text-slate-800'
+              className={`inline-flex min-w-0 items-center justify-center gap-2 rounded-xl px-2 py-2 text-[11px] font-semibold transition-all sm:px-3 sm:text-sm ${
+                activeTab === 'alerts' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-700 hover:text-slate-900'
               }`}
             >
-            Alerts <Badge variant="secondary" className="text-xs">{alerts.length}</Badge>
+              <span className="truncate">Alerts</span>
+              <Badge variant="secondary" className="text-[10px] sm:text-xs">{alerts.length}</Badge>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('tracking')}
-              className={`relative z-10 inline-flex items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition-all ${
-                activeTab === 'tracking' ? 'text-slate-900' : 'hover:text-slate-800'
+              className={`inline-flex min-w-0 items-center justify-center gap-2 rounded-xl px-2 py-2 text-[11px] font-semibold transition-all sm:px-3 sm:text-sm ${
+                activeTab === 'tracking' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-700 hover:text-slate-900'
               }`}
             >
-              Tracking <Badge variant="secondary" className="text-xs">{trackingData.length}</Badge>
+              <span className="truncate">Tracking</span>
+              <Badge variant="secondary" className="text-[10px] sm:text-xs">{trackingData.length}</Badge>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('location')}
-              className={`relative z-10 inline-flex items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition-all ${
-                activeTab === 'location' ? 'text-slate-900' : 'hover:text-slate-800'
+              className={`inline-flex min-w-0 items-center justify-center gap-2 rounded-xl px-2 py-2 text-[11px] font-semibold transition-all sm:px-3 sm:text-sm ${
+                activeTab === 'location' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-700 hover:text-slate-900'
               }`}
             >
-            Location Details
+              <span className="truncate">Location</span>
             </button>
           </div>
         </div>
@@ -410,12 +424,23 @@ const TripModal = ({ trip, onClose }) => {
                 </Card>
               ) : (
                 <>
-                  <Card className="border-slate-200">
+                  <Card className={`border-slate-200 ${trackingMapExpanded ? 'fixed inset-4 z-50 flex h-[calc(100vh-2rem)] flex-col shadow-2xl' : ''}`}>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Live Tracking Map</CardTitle>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <MapPinned className="h-4 w-4 text-sky-600" />
+                        Live Tracking Map
+                      </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <div className="h-64 overflow-hidden rounded-lg border border-slate-200">
+                    <CardContent className={trackingMapExpanded ? 'flex-1 overflow-hidden' : ''}>
+                      <div className={`relative overflow-hidden rounded-lg border border-slate-200 ${trackingMapExpanded ? 'h-full' : 'h-64'}`}>
+                        <button
+                          type="button"
+                          aria-label={trackingMapExpanded ? 'Minimize tracking map' : 'Expand tracking map'}
+                          onClick={() => setTrackingMapExpanded((value) => !value)}
+                          className="absolute right-2 top-2 z-[401] inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-md backdrop-blur hover:bg-white hover:text-slate-900"
+                        >
+                          {trackingMapExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                        </button>
                         <MapContainer
                           center={trackingMapCenter}
                           zoom={13}
@@ -423,6 +448,7 @@ const TripModal = ({ trip, onClose }) => {
                           zoomControl={true}
                           dragging={true}
                         >
+                          <MapResizer expandKey={trackingMapExpanded ? 'expanded' : 'collapsed'} />
                           <TileLayer
                             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -432,7 +458,6 @@ const TripModal = ({ trip, onClose }) => {
                             positions={trackingMapPoints.map((p) => [p._lat, p._lng])}
                             pathOptions={{ color: '#2563eb', weight: 3, opacity: 0.9 }}
                           />
-
                           {trackingMapPoints.map((point) => (
                             <CircleMarker
                               key={`${toMillis(point.timestamp)}-${point._idx}`}
@@ -457,8 +482,6 @@ const TripModal = ({ trip, onClose }) => {
                                       ? new Date(point.timestamp.toDate()).toLocaleString()
                                       : 'N/A'}
                                   </p>
-                                  {/* <p><span className="font-semibold">Lat:</span> {point._lat.toFixed(6)}</p>
-                                  <p><span className="font-semibold">Lng:</span> {point._lng.toFixed(6)}</p> */}
                                   {servicesConfig.tempHumidityEnabled && (
                                     <>
                                       <p><span className="font-semibold">Temp:</span> {Number(point.temp ?? 0).toFixed(1)} C</p>
