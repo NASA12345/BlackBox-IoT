@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '../utils';
 
-export const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
+export const Modal = ({ isOpen, onClose, title, children, size = 'md', className }) => {
   if (!isOpen) return null;
 
   const sizeClasses = {
@@ -26,7 +26,8 @@ export const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
         <div
           className={cn(
             'bg-white rounded-lg shadow-lg w-full max-h-[90vh] flex flex-col overflow-hidden',
-            sizeClasses[size]
+            sizeClasses[size],
+            className
           )}
           onClick={(e) => e.stopPropagation()}
         >

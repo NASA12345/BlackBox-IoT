@@ -240,7 +240,7 @@ const UserHome = () => {
                                   <p className="font-semibold text-blue-600">{trip.trackingData?.length || 0}</p>
                                 </div>
                               </div>
-                              <div className="border-t pt-3 space-y-2 text-sm">
+                              {/* <div className="border-t pt-3 space-y-2 text-sm">
                                 <div>
                                   <p className="text-gray-600 text-xs">📍 Start Point</p>
                                   <p className="font-mono text-xs">{trip.startGeofence?.latitude?.toFixed(4)}, {trip.startGeofence?.longitude?.toFixed(4)}</p>
@@ -249,7 +249,7 @@ const UserHome = () => {
                                   <p className="text-gray-600 text-xs">🎯 End Point</p>
                                   <p className="font-mono text-xs">{trip.endGeofence?.latitude?.toFixed(4)}, {trip.endGeofence?.longitude?.toFixed(4)}</p>
                                 </div>
-                              </div>
+                              </div> */}
                               <Button variant="outline" className="w-full mt-2" onClick={() => setSelectedTrip(trip)}>
                                 View Details →
                               </Button>

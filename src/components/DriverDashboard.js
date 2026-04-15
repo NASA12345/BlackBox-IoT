@@ -5,6 +5,7 @@ import {
   assignTripToDriver,
   updateTripStatus,
   addTrackingData,
+  addAlert,
 } from '../services/firestoreService';
 import bluetoothService from '../services/bluetoothService';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,6 +17,8 @@ import { Modal } from '../lib/components/Modal';
 import { useToast } from '../contexts/ToastContext';
 
 const DriverDashboard = () => {
+  const TRACKING_LOST_INTERVAL_MS = 60 * 1000;
+
   const [trips, setTrips] = useState([]);
   const [availableTrips, setAvailableTrips] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
@@ -24,6 +27,9 @@ const DriverDashboard = () => {
   const [assigningTripId, setAssigningTripId] = useState(null);
   const [sensorData, setSensorData] = useState(null);
   const [gpsData, setGpsData] = useState(null);
+  const [lastPingAtMs, setLastPingAtMs] = useState(0);
+  const [lastTrackingLostAlertAtMs, setLastTrackingLostAlertAtMs] = useState(0);
+  const [heartbeatNowMs, setHeartbeatNowMs] = useState(() => Date.now());
   const [activeSection, setActiveSection] = useState('controls');
   const [tripListView, setTripListView] = useState('assigned');
   const [showEndTripConfirm, setShowEndTripConfirm] = useState(false);
@@ -41,6 +47,16 @@ const DriverDashboard = () => {
   useEffect(() => {
     activeTripRef.current = activeTrip;
   }, [activeTrip]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setHeartbeatNowMs(Date.now());
+    }, 10000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   const loadTrips = useCallback(async () => {
     if (!currentUser) return;
@@ -223,6 +239,8 @@ const DriverDashboard = () => {
       // Connect to device
       await bluetoothService.connectToDevice();
       setBtConnected(true);
+      setLastPingAtMs(Date.now());
+      setLastTrackingLostAlertAtMs(0);
       toast({
         title: 'Bluetooth connected',
         description: 'Connected to ESP32 device.',
@@ -232,6 +250,8 @@ const DriverDashboard = () => {
       // Set up data callback
       bluetoothService.setDataCallback(async (data) => {
         setSensorData(data);
+        setLastPingAtMs(Date.now());
+        setLastTrackingLostAlertAtMs(0);
 
         const latestTrip = activeTripRef.current;
         if (!latestTrip) {
@@ -290,6 +310,8 @@ const DriverDashboard = () => {
       setBtConnected(false);
       setSensorData(null);
       setGpsData(null);
+      setLastPingAtMs(0);
+      setLastTrackingLostAlertAtMs(0);
       toast({
         title: 'Bluetooth disconnected',
         description: 'ESP32 has been disconnected.',
@@ -322,8 +344,70 @@ const DriverDashboard = () => {
 
   const assignedTrips = trips.filter((trip) => trip.status !== 'completed');
   const completedTrips = trips.filter((trip) => trip.status === 'completed');
+  const activeServices = {
+    tempHumidityEnabled:
+      typeof activeTrip?.servicesConfig?.tempHumidityEnabled === 'boolean'
+        ? activeTrip.servicesConfig.tempHumidityEnabled
+        : true,
+    impactEnabled:
+      typeof activeTrip?.servicesConfig?.impactEnabled === 'boolean'
+        ? activeTrip.servicesConfig.impactEnabled
+        : true,
+    tamperingEnabled: true,
+  };
+
   const activeSectionIndex =
     activeSection === 'controls' ? 0 : activeSection === 'sensors' ? 1 : 2;
+  const shouldReconnect =
+    btConnected &&
+    lastPingAtMs > 0 &&
+    heartbeatNowMs - lastPingAtMs >= TRACKING_LOST_INTERVAL_MS;
+
+  useEffect(() => {
+    if (!btConnected || !activeTrip?.id || lastPingAtMs <= 0) return;
+
+    const silenceMs = heartbeatNowMs - lastPingAtMs;
+    if (silenceMs < TRACKING_LOST_INTERVAL_MS) return;
+
+    const elapsedSinceLastLossAlert =
+      lastTrackingLostAlertAtMs > 0
+        ? heartbeatNowMs - lastTrackingLostAlertAtMs
+        : TRACKING_LOST_INTERVAL_MS;
+
+    if (elapsedSinceLastLossAlert < TRACKING_LOST_INTERVAL_MS) return;
+
+    let isCancelled = false;
+
+    const pushTrackingLostAlert = async () => {
+      try {
+        const silentSeconds = Math.floor(silenceMs / 1000);
+        await addAlert(activeTrip.id, {
+          type: 'tracking',
+          message: `Tracking is lost. No ping received for ${silentSeconds}s.`,
+          value: silentSeconds,
+        });
+
+        if (!isCancelled) {
+          setLastTrackingLostAlertAtMs(Date.now());
+        }
+      } catch (lossAlertError) {
+        console.error('Error sending tracking lost alert:', lossAlertError);
+      }
+    };
+
+    pushTrackingLostAlert();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    btConnected,
+    activeTrip,
+    lastPingAtMs,
+    heartbeatNowMs,
+    lastTrackingLostAlertAtMs,
+    TRACKING_LOST_INTERVAL_MS,
+  ]);
 
   const handleTripListViewChange = (nextView) => {
     if (tripListView === nextView) return;
@@ -344,6 +428,8 @@ const DriverDashboard = () => {
       setBtConnected(false);
       setSensorData(null);
       setGpsData(null);
+      setLastPingAtMs(0);
+      setLastTrackingLostAlertAtMs(0);
     }
   }, [activeTrip, trips]);
 
@@ -567,7 +653,7 @@ const DriverDashboard = () => {
                         <div className="space-y-2">
                           <div className="p-2 bg-green-50 border border-green-200 rounded-md flex items-center gap-2">
                             <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div>
-                            <span className="text-xs font-semibold text-green-700">Connected to ESP32</span>
+                            <span className="text-xs font-semibold text-green-700">{shouldReconnect ? 'Reconnect to ESP32' : 'Connected to ESP32'}</span>
                           </div>
                           <Button
                             onClick={handleBluetoothDisconnect}
@@ -598,7 +684,7 @@ const DriverDashboard = () => {
                             </div>
                             <div>
                               <p className="text-gray-600">BLE Status</p>
-                              <p className="font-bold text-base">{btConnected ? '✅ Connected' : '❌ Disconnected'}</p>
+                              <p className="font-bold text-base">{btConnected ? (shouldReconnect ? '⚠️ Reconnect' : '✅ Connected') : '❌ Disconnected'}</p>
                             </div>
                           </div>
                         </CardContent>
@@ -617,19 +703,23 @@ const DriverDashboard = () => {
                       </CardHeader>
                       <CardContent className="pt-0">
                         <div className="grid grid-cols-2 gap-3">
-                          <Card className="bg-orange-50 border-orange-200">
-                            <CardContent className="pt-3">
-                              <p className="text-xs text-gray-600 mb-1">🌡️ Temperature</p>
-                              <p className="text-2xl font-bold text-orange-600">{sensorData.temp?.toFixed(1)}°C</p>
-                            </CardContent>
-                          </Card>
+                          {activeServices.tempHumidityEnabled && (
+                            <Card className="bg-orange-50 border-orange-200">
+                              <CardContent className="pt-3">
+                                <p className="text-xs text-gray-600 mb-1">🌡️ Temperature</p>
+                                <p className="text-2xl font-bold text-orange-600">{Number(sensorData.temp ?? 0).toFixed(1)}°C</p>
+                              </CardContent>
+                            </Card>
+                          )}
 
-                          <Card className="bg-blue-50 border-blue-200">
-                            <CardContent className="pt-3">
-                              <p className="text-xs text-gray-600 mb-1">💧 Humidity</p>
-                              <p className="text-2xl font-bold text-blue-600">{sensorData.humidity?.toFixed(1)}%</p>
-                            </CardContent>
-                          </Card>
+                          {activeServices.tempHumidityEnabled && (
+                            <Card className="bg-blue-50 border-blue-200">
+                              <CardContent className="pt-3">
+                                <p className="text-xs text-gray-600 mb-1">💧 Humidity</p>
+                                <p className="text-2xl font-bold text-blue-600">{Number(sensorData.humidity ?? 0).toFixed(1)}%</p>
+                              </CardContent>
+                            </Card>
+                          )}
 
                           <Card className={sensorData.tamper ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}>
                             <CardContent className="pt-3">
@@ -640,23 +730,27 @@ const DriverDashboard = () => {
                             </CardContent>
                           </Card>
 
-                          <Card className="bg-indigo-50 border-indigo-200">
-                            <CardContent className="pt-3">
-                              <p className="text-xs text-gray-600 mb-1">🌀 Gyroscope (rad/s)</p>
-                              <p className="text-sm font-bold text-indigo-700">
-                                X:{Number(sensorData.gx ?? 0).toFixed(2)} Y:{Number(sensorData.gy ?? 0).toFixed(2)} Z:{Number(sensorData.gz ?? 0).toFixed(2)}
-                              </p>
-                            </CardContent>
-                          </Card>
+                          {activeServices.impactEnabled && (
+                            <Card className="bg-indigo-50 border-indigo-200">
+                              <CardContent className="pt-3">
+                                <p className="text-xs text-gray-600 mb-1">🌀 Gyroscope (rad/s)</p>
+                                <p className="text-sm font-bold text-indigo-700">
+                                  X:{Number(sensorData.gx ?? 0).toFixed(2)} Y:{Number(sensorData.gy ?? 0).toFixed(2)} Z:{Number(sensorData.gz ?? 0).toFixed(2)}
+                                </p>
+                              </CardContent>
+                            </Card>
+                          )}
 
-                          <Card className="bg-slate-50 border-slate-200 col-span-2">
-                            <CardContent className="pt-3">
-                              <p className="text-xs text-gray-600 mb-1">📊 Accelerometer (m/s²)</p>
-                              <p className="text-sm font-bold text-slate-700">
-                                X:{Number(sensorData.ax ?? 0).toFixed(2)} Y:{Number(sensorData.ay ?? 0).toFixed(2)} Z:{Number(sensorData.az ?? 0).toFixed(2)}
-                              </p>
-                            </CardContent>
-                          </Card>
+                          {activeServices.impactEnabled && (
+                            <Card className="bg-slate-50 border-slate-200 col-span-2">
+                              <CardContent className="pt-3">
+                                <p className="text-xs text-gray-600 mb-1">📊 Accelerometer (m/s²)</p>
+                                <p className="text-sm font-bold text-slate-700">
+                                  X:{Number(sensorData.ax ?? 0).toFixed(2)} Y:{Number(sensorData.ay ?? 0).toFixed(2)} Z:{Number(sensorData.az ?? 0).toFixed(2)}
+                                </p>
+                              </CardContent>
+                            </Card>
+                          )}
                         </div>
                       </CardContent>
                     </Card>

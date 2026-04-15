@@ -18,11 +18,211 @@ import { db } from '../firebase';
 const DEFAULT_ALERT_THRESHOLDS = {
   temperatureMax: 35,
   humidityMax: 70,
+  impactLevel: 'mid',
 };
 
-const ACCELERATION_THRESHOLD = 18; // m/s^2 (approx harsh shock threshold)
-const GYROSCOPE_THRESHOLD = 3; // rad/s
+const IMPACT_THRESHOLDS = {
+  high: { acceleration: 24, gyroscope: 4.2 },
+  mid: { acceleration: 18, gyroscope: 3.0 },
+  low: { acceleration: 14, gyroscope: 2.2 },
+};
+
+const DEFAULT_SERVICES_CONFIG = {
+  tempHumidityEnabled: true,
+  impactEnabled: true,
+  tamperingEnabled: true,
+};
+
 const ALERT_COOLDOWN_MS = 2 * 60 * 1000;
+const DEFAULT_GEOFENCE_RADIUS_KM = 0.5;
+const POLYGON_GEOFENCE_COLLECTION = 'tripGeofencePolygons';
+
+const normalizePolygonPoints = (points) => {
+  if (!Array.isArray(points)) return [];
+
+  return points
+    .map((point) => {
+      const latitude = Number(point?.latitude ?? point?.lat);
+      const longitude = Number(point?.longitude ?? point?.lng);
+      return Number.isFinite(latitude) && Number.isFinite(longitude)
+        ? { latitude, longitude }
+        : null;
+    })
+    .filter(Boolean);
+};
+
+const normalizeGeofencePayload = (geofence = {}) => {
+  const centerLat = Number(geofence?.center?.latitude ?? geofence?.latitude);
+  const centerLong = Number(geofence?.center?.longitude ?? geofence?.longitude);
+
+  const latitude = Number.isFinite(centerLat) ? centerLat : 0;
+  const longitude = Number.isFinite(centerLong) ? centerLong : 0;
+  const type = geofence?.type === 'polygon' ? 'polygon' : 'circle';
+  const radiusCandidate = Number(geofence?.radiusKm);
+  const radiusKm = Number.isFinite(radiusCandidate) ? radiusCandidate : DEFAULT_GEOFENCE_RADIUS_KM;
+  const polygonPoints = normalizePolygonPoints(geofence?.polygonPoints);
+  const geofenceId = geofence?.geofenceId || doc(collection(db, POLYGON_GEOFENCE_COLLECTION)).id;
+
+  return {
+    geofenceId,
+    type,
+    latitude,
+    longitude,
+    center: {
+      latitude,
+      longitude,
+    },
+    radiusKm: type === 'circle' ? radiusKm : null,
+    polygonPointCount: type === 'polygon' ? polygonPoints.length : 0,
+    polygonPoints,
+  };
+};
+
+const normalizeServicesConfig = (servicesConfig = {}) => ({
+  tempHumidityEnabled:
+    typeof servicesConfig?.tempHumidityEnabled === 'boolean'
+      ? servicesConfig.tempHumidityEnabled
+      : DEFAULT_SERVICES_CONFIG.tempHumidityEnabled,
+  impactEnabled:
+    typeof servicesConfig?.impactEnabled === 'boolean'
+      ? servicesConfig.impactEnabled
+      : DEFAULT_SERVICES_CONFIG.impactEnabled,
+  tamperingEnabled: true,
+});
+
+const normalizeImpactLevel = (impactLevel) => {
+  const level = String(impactLevel || '').toLowerCase();
+  if (level === 'high' || level === 'mid' || level === 'low') return level;
+  return DEFAULT_ALERT_THRESHOLDS.impactLevel;
+};
+
+const buildTrackingEntryByServices = (trackingData = {}, servicesConfig = DEFAULT_SERVICES_CONFIG) => {
+  const entry = {
+    tamper: trackingData?.tamper,
+    latitude: trackingData?.latitude ?? null,
+    longitude: trackingData?.longitude ?? null,
+    accuracy: trackingData?.accuracy ?? null,
+  };
+
+  if (servicesConfig.tempHumidityEnabled) {
+    entry.temp = trackingData?.temp;
+    entry.humidity = trackingData?.humidity;
+  }
+
+  if (servicesConfig.impactEnabled) {
+    entry.ax = trackingData?.ax;
+    entry.ay = trackingData?.ay;
+    entry.az = trackingData?.az;
+    entry.gx = trackingData?.gx;
+    entry.gy = trackingData?.gy;
+    entry.gz = trackingData?.gz;
+  }
+
+  return entry;
+};
+
+const savePolygonGeofenceIfNeeded = async (tripId, geofenceType, geofencePayload) => {
+  if (geofencePayload.type !== 'polygon') return;
+
+  await setDoc(doc(db, POLYGON_GEOFENCE_COLLECTION, geofencePayload.geofenceId), {
+    geofenceId: geofencePayload.geofenceId,
+    tripId,
+    geofenceType,
+    center: geofencePayload.center,
+    points: geofencePayload.polygonPoints,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+};
+
+const getPolygonGeofencePoints = async (geofenceId) => {
+  if (!geofenceId) return [];
+
+  const polygonDoc = await getDoc(doc(db, POLYGON_GEOFENCE_COLLECTION, geofenceId));
+  if (!polygonDoc.exists()) return [];
+
+  return normalizePolygonPoints(polygonDoc.data()?.points);
+};
+
+export const getGeofencePolygonPoints = async (geofenceId) => getPolygonGeofencePoints(geofenceId);
+
+const getTripGeofenceShapes = async (trip) => {
+  const startIsPolygon = trip?.startGeofence?.type === 'polygon';
+  const endIsPolygon = trip?.endGeofence?.type === 'polygon';
+
+  const [startPolygonPoints, endPolygonPoints] = await Promise.all([
+    startIsPolygon ? getPolygonGeofencePoints(trip?.startGeofence?.geofenceId) : Promise.resolve([]),
+    endIsPolygon ? getPolygonGeofencePoints(trip?.endGeofence?.geofenceId) : Promise.resolve([]),
+  ]);
+
+  return {
+    startGeofence: {
+      ...trip?.startGeofence,
+      points: startPolygonPoints,
+    },
+    endGeofence: {
+      ...trip?.endGeofence,
+      points: endPolygonPoints,
+    },
+  };
+};
+
+const isPointOnSegment = (py, px, y1, x1, y2, x2) => {
+  const cross = (py - y1) * (x2 - x1) - (px - x1) * (y2 - y1);
+  if (Math.abs(cross) > 1e-10) return false;
+  const dot = (px - x1) * (px - x2) + (py - y1) * (py - y2);
+  return dot <= 1e-10;
+};
+
+const isPointInsidePolygon = (latitude, longitude, points) => {
+  if (!Array.isArray(points) || points.length < 3) return false;
+
+  const x = longitude;
+  const y = latitude;
+  let inside = false;
+
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const xi = Number(points[i].longitude);
+    const yi = Number(points[i].latitude);
+    const xj = Number(points[j].longitude);
+    const yj = Number(points[j].latitude);
+
+    if (![xi, yi, xj, yj].every(Number.isFinite)) continue;
+
+    if (isPointOnSegment(y, x, yi, xi, yj, xj)) {
+      return true;
+    }
+
+    const intersects =
+      (yi > y) !== (yj > y) &&
+      x < ((xj - xi) * (y - yi)) / (yj - yi + Number.EPSILON) + xi;
+
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+};
+
+const isWithinGeofence = (latitude, longitude, geofence) => {
+  if (!geofence) return false;
+
+  if (geofence.type === 'polygon') {
+    return isPointInsidePolygon(latitude, longitude, geofence.points);
+  }
+
+  return (
+    Number.isFinite(Number(geofence.latitude)) &&
+    Number.isFinite(Number(geofence.longitude)) &&
+    Number.isFinite(Number(geofence.radiusKm)) &&
+    checkGeofenceViolation(
+      latitude,
+      longitude,
+      Number(geofence.latitude),
+      Number(geofence.longitude),
+      Number(geofence.radiusKm)
+    )
+  );
+};
 
 // ========== USER OPERATIONS ==========
 
@@ -77,21 +277,47 @@ export const getDriverProfile = async (driverId) => {
 
 export const createTrip = async (userId, tripData) => {
   try {
-    const { alertThresholds, ...restTripData } = tripData || {};
+    const { alertThresholds, servicesConfig, ...restTripData } = tripData || {};
+    const normalizedStartGeofence = normalizeGeofencePayload(restTripData.startGeofence);
+    const normalizedEndGeofence = normalizeGeofencePayload(restTripData.endGeofence);
+    const normalizedServices = normalizeServicesConfig(servicesConfig);
+
     const normalizedThresholds = {
       temperatureMax:
-        Number.isFinite(Number(alertThresholds?.temperatureMax))
+        normalizedServices.tempHumidityEnabled && Number.isFinite(Number(alertThresholds?.temperatureMax))
           ? Number(alertThresholds.temperatureMax)
-          : DEFAULT_ALERT_THRESHOLDS.temperatureMax,
+          : null,
       humidityMax:
-        Number.isFinite(Number(alertThresholds?.humidityMax))
+        normalizedServices.tempHumidityEnabled && Number.isFinite(Number(alertThresholds?.humidityMax))
           ? Number(alertThresholds.humidityMax)
-          : DEFAULT_ALERT_THRESHOLDS.humidityMax,
+          : null,
+      impactLevel: normalizedServices.impactEnabled
+        ? normalizeImpactLevel(alertThresholds?.impactLevel)
+        : null,
     };
 
     const tripRef = await addDoc(collection(db, 'trips'), {
       userId,
       ...restTripData,
+      startGeofence: {
+        geofenceId: normalizedStartGeofence.geofenceId,
+        type: normalizedStartGeofence.type,
+        latitude: normalizedStartGeofence.latitude,
+        longitude: normalizedStartGeofence.longitude,
+        center: normalizedStartGeofence.center,
+        radiusKm: normalizedStartGeofence.radiusKm,
+        polygonPointCount: normalizedStartGeofence.polygonPointCount,
+      },
+      endGeofence: {
+        geofenceId: normalizedEndGeofence.geofenceId,
+        type: normalizedEndGeofence.type,
+        latitude: normalizedEndGeofence.latitude,
+        longitude: normalizedEndGeofence.longitude,
+        center: normalizedEndGeofence.center,
+        radiusKm: normalizedEndGeofence.radiusKm,
+        polygonPointCount: normalizedEndGeofence.polygonPointCount,
+      },
+      servicesConfig: normalizedServices,
       alertThresholds: normalizedThresholds,
       status: 'created', // created, assigned, active, completed, cancelled
       createdAt: serverTimestamp(),
@@ -99,6 +325,12 @@ export const createTrip = async (userId, tripData) => {
       alerts: [],
       trackingData: [],
     });
+
+    await Promise.all([
+      savePolygonGeofenceIfNeeded(tripRef.id, 'start', normalizedStartGeofence),
+      savePolygonGeofenceIfNeeded(tripRef.id, 'end', normalizedEndGeofence),
+    ]);
+
     return tripRef.id;
   } catch (error) {
     console.error('Error creating trip:', error);
@@ -230,8 +462,9 @@ export const addTrackingData = async (tripId, trackingData) => {
     }
 
     const trip = { id: tripSnap.id, ...tripSnap.data() };
+    const servicesConfig = normalizeServicesConfig(trip?.servicesConfig);
     const trackingEntry = {
-      ...trackingData,
+      ...buildTrackingEntryByServices(trackingData, servicesConfig),
       timestamp: Timestamp.now(),
     };
 
@@ -239,7 +472,8 @@ export const addTrackingData = async (tripId, trackingData) => {
       trackingData: arrayUnion(trackingEntry),
     });
 
-    const generatedAlerts = buildAlertsFromTracking(trip, trackingData);
+    const geofenceShapes = await getTripGeofenceShapes(trip);
+    const generatedAlerts = buildAlertsFromTracking(trip, trackingEntry, geofenceShapes);
     if (generatedAlerts.length > 0) {
       for (const alertData of generatedAlerts) {
         await addAlert(tripId, alertData);
@@ -260,10 +494,13 @@ const toMillis = (value) => {
 
 const isTruthySensorFlag = (value) => value === true || value === 1 || value === '1';
 
-const buildAlertsFromTracking = (trip, trackingData) => {
+const buildAlertsFromTracking = (trip, trackingData, geofenceShapes) => {
   const alerts = [];
   const tripAlerts = Array.isArray(trip.alerts) ? trip.alerts : [];
   const tripTracking = Array.isArray(trip.trackingData) ? trip.trackingData : [];
+  const servicesConfig = normalizeServicesConfig(trip?.servicesConfig);
+  const impactLevel = normalizeImpactLevel(trip?.alertThresholds?.impactLevel);
+  const impactThresholds = IMPACT_THRESHOLDS[impactLevel] || IMPACT_THRESHOLDS.mid;
   const thresholds = {
     temperatureMax:
       Number.isFinite(Number(trip.alertThresholds?.temperatureMax))
@@ -284,8 +521,15 @@ const buildAlertsFromTracking = (trip, trackingData) => {
     return Date.now() - toMillis(latestForType.timestamp) > ALERT_COOLDOWN_MS;
   };
 
+  const previousTracking = tripTracking.length > 0 ? tripTracking[tripTracking.length - 1] : null;
+
   const temp = Number(trackingData?.temp);
-  if (Number.isFinite(temp) && temp > thresholds.temperatureMax && canSendAlert('temperature')) {
+  if (
+    servicesConfig.tempHumidityEnabled &&
+    Number.isFinite(temp) &&
+    temp > thresholds.temperatureMax &&
+    canSendAlert('temperature')
+  ) {
     alerts.push({
       type: 'temperature',
       message: `Temperature exceeded threshold (${temp.toFixed(1)}°C > ${thresholds.temperatureMax.toFixed(1)}°C)`,
@@ -294,7 +538,12 @@ const buildAlertsFromTracking = (trip, trackingData) => {
   }
 
   const humidity = Number(trackingData?.humidity);
-  if (Number.isFinite(humidity) && humidity > thresholds.humidityMax && canSendAlert('humidity')) {
+  if (
+    servicesConfig.tempHumidityEnabled &&
+    Number.isFinite(humidity) &&
+    humidity > thresholds.humidityMax &&
+    canSendAlert('humidity')
+  ) {
     alerts.push({
       type: 'humidity',
       message: `Humidity exceeded threshold (${humidity.toFixed(1)}% > ${thresholds.humidityMax.toFixed(1)}%)`,
@@ -302,36 +551,65 @@ const buildAlertsFromTracking = (trip, trackingData) => {
     });
   }
 
+  if (
+    servicesConfig.tempHumidityEnabled &&
+    Number.isFinite(temp) &&
+    Number.isFinite(humidity) &&
+    temp === 0 &&
+    humidity === 0 &&
+    canSendAlert('Temp Humidity Sensor Fault')
+  ) {
+    alerts.push({
+      type: 'Temp Humidity Sensor Fault',
+      message: 'Temperature/Humidity sensor is not working (both readings are zero).',
+      value: 0,
+    });
+  }
+
   const ax = Number(trackingData?.ax);
   const ay = Number(trackingData?.ay);
   const az = Number(trackingData?.az);
-  if ([ax, ay, az].every(Number.isFinite)) {
-    const accMag = Math.sqrt(ax * ax + ay * ay + az * az);
-    if (accMag > ACCELERATION_THRESHOLD && canSendAlert('acceleration')) {
-      alerts.push({
-        type: 'acceleration',
-        message: `High acceleration detected (${accMag.toFixed(2)} m/s²)`,
-        value: accMag,
-      });
-    }
-  }
-
   const gx = Number(trackingData?.gx);
   const gy = Number(trackingData?.gy);
   const gz = Number(trackingData?.gz);
+
+  let accMag = 0;
+  if ([ax, ay, az].every(Number.isFinite)) {
+    accMag = Math.sqrt(ax * ax + ay * ay + az * az);
+  }
+
+  let gyroMag = 0;
   if ([gx, gy, gz].every(Number.isFinite)) {
-    const gyroMag = Math.sqrt(gx * gx + gy * gy + gz * gz);
-    if (gyroMag > GYROSCOPE_THRESHOLD && canSendAlert('gyroscope')) {
+    gyroMag = Math.sqrt(gx * gx + gy * gy + gz * gz);
+  }
+
+  if (servicesConfig.impactEnabled) {
+    const impactExceeded =
+      (accMag > 0 && accMag > impactThresholds.acceleration) ||
+      (gyroMag > 0 && gyroMag > impactThresholds.gyroscope);
+
+    const impactSensorFault =
+      [ax, ay, az, gx, gy, gz].every(Number.isFinite) &&
+      [ax, ay, az, gx, gy, gz].every((value) => value === 0);
+
+    if (impactExceeded && canSendAlert('impact')) {
       alerts.push({
-        type: 'gyroscope',
-        message: `High angular motion detected (${gyroMag.toFixed(2)} rad/s)`,
-        value: gyroMag,
+        type: 'impact',
+        message: `Impact threshold (${impactLevel}) exceeded: Acc ${accMag.toFixed(2)} m/s², Gyro ${gyroMag.toFixed(2)} rad/s`,
+        value: Math.max(accMag, gyroMag),
+      });
+    }
+
+    if (impactSensorFault && canSendAlert('Impact Sensor Fault')) {
+      alerts.push({
+        type: 'Impact Sensor Fault',
+        message: 'Impact sensor is faulty (all acceleration and gyroscope axes are fixed).',
+        value: 0,
       });
     }
   }
 
   const tamperNow = isTruthySensorFlag(trackingData?.tamper);
-  const previousTracking = tripTracking.length > 0 ? tripTracking[tripTracking.length - 1] : null;
   const tamperPrev = isTruthySensorFlag(previousTracking?.tamper);
 
   const lat = Number(trackingData?.latitude);
@@ -339,36 +617,14 @@ const buildAlertsFromTracking = (trip, trackingData) => {
   const hasLocation = Number.isFinite(lat) && Number.isFinite(long);
 
   const inStartGeofence =
-    hasLocation &&
-    trip?.startGeofence &&
-    Number.isFinite(Number(trip.startGeofence.latitude)) &&
-    Number.isFinite(Number(trip.startGeofence.longitude)) &&
-    Number.isFinite(Number(trip.startGeofence.radiusKm)) &&
-    checkGeofenceViolation(
-      lat,
-      long,
-      Number(trip.startGeofence.latitude),
-      Number(trip.startGeofence.longitude),
-      Number(trip.startGeofence.radiusKm)
-    );
+    hasLocation && isWithinGeofence(lat, long, geofenceShapes?.startGeofence || trip?.startGeofence);
 
   const inEndGeofence =
-    hasLocation &&
-    trip?.endGeofence &&
-    Number.isFinite(Number(trip.endGeofence.latitude)) &&
-    Number.isFinite(Number(trip.endGeofence.longitude)) &&
-    Number.isFinite(Number(trip.endGeofence.radiusKm)) &&
-    checkGeofenceViolation(
-      lat,
-      long,
-      Number(trip.endGeofence.latitude),
-      Number(trip.endGeofence.longitude),
-      Number(trip.endGeofence.radiusKm)
-    );
+    hasLocation && isWithinGeofence(lat, long, geofenceShapes?.endGeofence || trip?.endGeofence);
 
   const outsideBothGeofences = hasLocation ? !inStartGeofence && !inEndGeofence : false;
 
-  if (tamperNow && !tamperPrev && outsideBothGeofences && canSendAlert('tamper')) {
+  if (servicesConfig.tamperingEnabled && tamperNow && !tamperPrev && outsideBothGeofences && canSendAlert('tamper')) {
     alerts.push({
       type: 'tamper',
       message: 'Seal tampering detected outside start/end geofence',
