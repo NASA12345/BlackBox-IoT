@@ -1,4 +1,4 @@
-# BLACKBOX INSURANCE PLATFORM
+# BLACKBOX
 
 <p align="center">
   <img alt="React" src="https://img.shields.io/badge/Frontend-React%2018-1f2937?style=for-the-badge&logo=react" />
