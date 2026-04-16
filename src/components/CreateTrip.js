@@ -118,9 +118,6 @@ const CreateTrip = ({ onTripCreated }) => {
   const { currentUser } = useAuth();
   const { toast } = useToast();
 
-  const activeSectionIndex =
-    activeSection === 'details' ? 0 : activeSection === 'start' ? 1 : 2;
-
   const normalizeSubmitGeofence = (geofence) => {
     const centerLat = Number(geofence?.center?.latitude ?? geofence?.latitude ?? DEFAULT_LOCATION.latitude);
     const centerLong = Number(geofence?.center?.longitude ?? geofence?.longitude ?? DEFAULT_LOCATION.longitude);
@@ -279,19 +276,14 @@ const CreateTrip = ({ onTripCreated }) => {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Section Navigation */}
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-1.5">
-              <div className="relative grid grid-cols-3 gap-1.5">
-                <span
-                  aria-hidden="true"
-                  className="absolute top-0.5 bottom-0.5 left-0.5 z-0 rounded-lg bg-white shadow-sm ring-1 ring-blue-200 transition-transform duration-300 ease-out"
-                  style={{ width: 'calc(33.333% - 0.5rem)', transform: `translateX(calc(${activeSectionIndex * 100}% + ${activeSectionIndex * 0.25}rem))` }}
-                />
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-1">
+              <div className="grid grid-cols-3 gap-1">
                 <button
                   type="button"
                   onClick={() => setActiveSection('details')}
-                  className={`relative z-10 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                  className={`rounded-lg px-2 py-2 text-xs font-semibold transition-colors sm:px-3 sm:text-sm ${
                     activeSection === 'details'
-                      ? 'text-blue-700'
+                      ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
@@ -300,24 +292,26 @@ const CreateTrip = ({ onTripCreated }) => {
                 <button
                   type="button"
                   onClick={() => setActiveSection('start')}
-                  className={`relative z-10 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                  className={`rounded-lg px-2 py-2 text-xs font-semibold transition-colors sm:px-3 sm:text-sm ${
                     activeSection === 'start'
-                      ? 'text-emerald-700'
+                      ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-emerald-200'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  Trip Start
+                  <span className="sm:hidden">Start</span>
+                  <span className="hidden sm:inline">Trip Start</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveSection('end')}
-                  className={`relative z-10 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                  className={`rounded-lg px-2 py-2 text-xs font-semibold transition-colors sm:px-3 sm:text-sm ${
                     activeSection === 'end'
-                      ? 'text-orange-700'
+                      ? 'bg-white text-orange-700 shadow-sm ring-1 ring-orange-200'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  Trip End
+                  <span className="sm:hidden">End</span>
+                  <span className="hidden sm:inline">Trip End</span>
                 </button>
               </div>
             </div>

@@ -57,6 +57,23 @@ const TripModal = ({ trip, onClose }) => {
     tamperingEnabled: true,
   };
 
+  const tripThresholds = useMemo(() => {
+    const temperatureMax = Number(trip?.alertThresholds?.temperatureMax);
+    const humidityMax = Number(trip?.alertThresholds?.humidityMax);
+    const impactLevelRaw = String(trip?.alertThresholds?.impactLevel || '').toLowerCase();
+    const impactLevel = ['high', 'mid', 'low'].includes(impactLevelRaw) ? impactLevelRaw : 'mid';
+
+    return {
+      temperatureMax: Number.isFinite(temperatureMax) ? temperatureMax : 35,
+      humidityMax: Number.isFinite(humidityMax) ? humidityMax : 70,
+      impactLevel,
+    };
+  }, [
+    trip?.alertThresholds?.humidityMax,
+    trip?.alertThresholds?.impactLevel,
+    trip?.alertThresholds?.temperatureMax,
+  ]);
+
   const toMillis = (value) => {
     if (!value) return 0;
     if (typeof value?.toDate === 'function') return value.toDate().getTime();
@@ -288,6 +305,27 @@ const TripModal = ({ trip, onClose }) => {
               </p>
             </div>
           </div>
+
+          {(servicesConfig.tempHumidityEnabled || servicesConfig.impactEnabled) && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-slate-600">Thresholds:</span>
+              {servicesConfig.tempHumidityEnabled && (
+                <Badge variant="secondary" className="text-xs">
+                  Temp {tripThresholds.temperatureMax.toFixed(1)} C
+                </Badge>
+              )}
+              {servicesConfig.tempHumidityEnabled && (
+                <Badge variant="secondary" className="text-xs">
+                  Humidity {tripThresholds.humidityMax.toFixed(1)}%
+                </Badge>
+              )}
+              {servicesConfig.impactEnabled && (
+                <Badge variant="secondary" className="text-xs capitalize">
+                  Impact {tripThresholds.impactLevel}
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Tabs and Content */}

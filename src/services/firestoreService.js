@@ -718,19 +718,24 @@ const buildAlertsFromTracking = (trip, trackingData, geofenceShapes) => {
   }
 
   if (servicesConfig.impactEnabled) {
-    const impactExceeded =
-      (accMag > 0 && accMag > impactThresholds.acceleration) ||
-      (gyroMag > 0 && gyroMag > impactThresholds.gyroscope);
-
     const impactSensorFault =
       [ax, ay, az, gx, gy, gz].every(Number.isFinite) &&
       [ax, ay, az, gx, gy, gz].every((value) => value === 0);
 
-    if (impactExceeded && canSendAlert('impact')) {
+    // Separate alerts for acceleration and gyro
+    if (accMag > 0 && accMag > impactThresholds.acceleration && canSendAlert('heavy speed impact')) {
       alerts.push({
-        type: 'impact',
-        message: `Impact threshold (${impactLevel}) exceeded: Acc ${accMag.toFixed(2)} m/s², Gyro ${gyroMag.toFixed(2)} rad/s`,
-        value: Math.max(accMag, gyroMag),
+        type: 'Speed impact',
+        message: `Heavy speed impact detected (${impactLevel}): ${accMag.toFixed(2)} m/s²`,
+        value: accMag,
+      });
+    }
+
+    if (gyroMag > 0 && gyroMag > impactThresholds.gyroscope && canSendAlert('heavy rotation')) {
+      alerts.push({
+        type: 'Heavy rotation',
+        message: `Heavy rotation detected (${impactLevel}): ${gyroMag.toFixed(2)} rad/s`,
+        value: gyroMag,
       });
     }
 

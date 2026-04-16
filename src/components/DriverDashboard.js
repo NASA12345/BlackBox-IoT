@@ -17,7 +17,14 @@ import { Modal } from '../lib/components/Modal';
 import { useToast } from '../contexts/ToastContext';
 
 const DriverDashboard = () => {
-  const TRACKING_LOST_INTERVAL_MS = 60 * 1000;
+  const TRACKING_LOST_INTERVAL_MS = 30 * 1000;
+
+  const isValidGpsCoordinate = (latitude, longitude) => {
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+    // Ignore startup null-island coordinates until a real GPS fix is available.
+    if (Math.abs(latitude) < 0.000001 && Math.abs(longitude) < 0.000001) return false;
+    return latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
+  };
 
   const [trips, setTrips] = useState([]);
   const [availableTrips, setAvailableTrips] = useState([]);
@@ -39,6 +46,7 @@ const DriverDashboard = () => {
   const { toast } = useToast();
   const gpsDataRef = useRef(null);
   const activeTripRef = useRef(null);
+  const gpsWatchIdRef = useRef(null);
 
   useEffect(() => {
     gpsDataRef.current = gpsData;
@@ -57,6 +65,101 @@ const DriverDashboard = () => {
       window.clearInterval(intervalId);
     };
   }, []);
+
+  const stopGPSTracking = useCallback(() => {
+    if (gpsWatchIdRef.current !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+      gpsWatchIdRef.current = null;
+    }
+  }, []);
+
+  const startGPSTracking = useCallback(() => {
+    if (!navigator.geolocation) return null;
+
+    if (gpsWatchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const latitude = Number(position.coords.latitude);
+        const longitude = Number(position.coords.longitude);
+
+        if (!isValidGpsCoordinate(latitude, longitude)) {
+          return;
+        }
+
+        setGpsData({
+          latitude,
+          longitude,
+          accuracy: position.coords.accuracy,
+          timestamp: new Date(),
+        });
+      },
+      (geoError) => {
+        console.error('GPS error:', geoError);
+        setError('GPS error: ' + geoError.message);
+        toast({
+          title: 'GPS error',
+          description: geoError.message || 'Unable to fetch location.',
+          variant: 'destructive',
+        });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
+    );
+
+    gpsWatchIdRef.current = watchId;
+    return watchId;
+  }, [toast]);
+
+  const ensureGpsReady = useCallback(async () => {
+    if (!navigator.geolocation) {
+      throw new Error('Geolocation is not supported on this device/browser.');
+    }
+
+    if (gpsWatchIdRef.current === null) {
+      startGPSTracking();
+    }
+
+    const existingGps = gpsDataRef.current;
+    if (isValidGpsCoordinate(Number(existingGps?.latitude), Number(existingGps?.longitude))) {
+      return;
+    }
+
+    await new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const latitude = Number(position.coords.latitude);
+          const longitude = Number(position.coords.longitude);
+
+          if (!isValidGpsCoordinate(latitude, longitude)) {
+            reject(new Error('Waiting for valid GPS fix. Please try again in a few seconds.'));
+            return;
+          }
+
+          setGpsData({
+            latitude,
+            longitude,
+            accuracy: position.coords.accuracy,
+            timestamp: new Date(),
+          });
+          resolve();
+        },
+        (geoError) => {
+          reject(new Error(geoError.message || 'Unable to get current location.'));
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        }
+      );
+    });
+  }, [startGPSTracking]);
 
   const loadTrips = useCallback(async () => {
     if (!currentUser) return;
@@ -153,6 +256,7 @@ const DriverDashboard = () => {
         setBtConnected(false);
       }
 
+      stopGPSTracking();
       await updateTripStatus(activeTrip.id, 'completed');
       setSensorData(null);
       setGpsData(null);
@@ -182,33 +286,6 @@ const DriverDashboard = () => {
     });
   };
 
-  // Start GPS tracking
-  const startGPSTracking = () => {
-    if (navigator.geolocation) {
-      const watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          setGpsData({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            timestamp: new Date(),
-          });
-        },
-        (error) => {
-          console.error('GPS error:', error);
-          setError('GPS error: ' + error.message);
-          toast({
-            title: 'GPS error',
-            description: error.message || 'Unable to fetch location.',
-            variant: 'destructive',
-          });
-        }
-      );
-
-      return watchId;
-    }
-  };
-
   // Connect to ESP32
   const handleBluetoothConnect = () => {
     if (!activeTrip) {
@@ -230,6 +307,9 @@ const DriverDashboard = () => {
       if (!bluetoothService.isBluetoothSupported()) {
         throw new Error('Web Bluetooth is not supported on this device');
       }
+
+      // Get location permission + first valid fix before sensor streaming.
+      await ensureGpsReady();
 
       // Connect to device
       await bluetoothService.connectToDevice();
@@ -255,11 +335,21 @@ const DriverDashboard = () => {
 
         try {
           const latestGps = gpsDataRef.current;
+          const hasValidGps = isValidGpsCoordinate(
+            Number(latestGps?.latitude),
+            Number(latestGps?.longitude)
+          );
+
+          if (!hasValidGps) {
+            // Skip early packets until we have a valid GPS coordinate.
+            return;
+          }
+
           const trackingPayload = {
             ...data,
-            latitude: latestGps?.latitude ?? null,
-            longitude: latestGps?.longitude ?? null,
-            accuracy: latestGps?.accuracy ?? null,
+            latitude: latestGps.latitude,
+            longitude: latestGps.longitude,
+            accuracy: latestGps.accuracy ?? null,
           };
 
           await addTrackingData(latestTrip.id, trackingPayload);
@@ -274,7 +364,7 @@ const DriverDashboard = () => {
         }
       });
 
-      // Start GPS tracking
+      // Keep live GPS updates running while connected.
       startGPSTracking();
     } catch (err) {
       setError(err.message || 'Failed to connect to Bluetooth');
@@ -306,6 +396,7 @@ const DriverDashboard = () => {
         await bluetoothService.disconnect();
       }
 
+      stopGPSTracking();
       setBtConnected(false);
       setSensorData(null);
       setGpsData(null);
@@ -337,6 +428,7 @@ const DriverDashboard = () => {
   const handleBluetoothDisconnect = async () => {
     try {
       await bluetoothService.disconnect();
+      stopGPSTracking();
       setBtConnected(false);
       setSensorData(null);
       setGpsData(null);
@@ -454,6 +546,7 @@ const DriverDashboard = () => {
 
     const latestActiveTrip = trips.find((trip) => trip.id === activeTrip.id);
     if (!latestActiveTrip || latestActiveTrip.status === 'completed') {
+      stopGPSTracking();
       setActiveTrip(null);
       setBtConnected(false);
       setSensorData(null);
@@ -461,7 +554,13 @@ const DriverDashboard = () => {
       setLastPingAtMs(0);
       setLastTrackingLostAlertAtMs(0);
     }
-  }, [activeTrip, trips]);
+  }, [activeTrip, stopGPSTracking, trips]);
+
+  useEffect(() => {
+    return () => {
+      stopGPSTracking();
+    };
+  }, [stopGPSTracking]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
