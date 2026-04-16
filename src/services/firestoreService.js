@@ -591,35 +591,15 @@ export const addTrackingData = async (tripId, trackingData) => {
     const trip = { id: tripSnap.id, ...tripSnap.data() };
     const servicesConfig = normalizeServicesConfig(trip?.servicesConfig);
     const entryId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const trackingTimestampIso = new Date().toISOString();
     const trackingEntry = {
       ...buildTrackingEntryByServices(trackingData, servicesConfig),
       id: entryId,
       timestamp: Timestamp.now(),
-      blockchainHash: null,
-      blockchainTxHash: null,
-      blockchainNetwork: 'sepolia',
-      blockchainStatus: 'pending',
     };
 
     await updateDoc(tripRef, {
       trackingData: arrayUnion(trackingEntry),
     });
-
-    const trackingPayloadForHash = {
-      recordType: 'tracking',
-      tripId,
-      trackingId: entryId,
-      timestamp: trackingTimestampIso,
-      ...buildTrackingEntryByServices(trackingData, servicesConfig),
-    };
-    anchorTripArrayRecordInBackground(
-      tripId,
-      'trackingData',
-      entryId,
-      trackingPayloadForHash,
-      'Blockchain tracking hash store failed'
-    );
 
     const geofenceShapes = await getTripGeofenceShapes(trip);
     const generatedAlerts = buildAlertsFromTracking(trip, trackingEntry, geofenceShapes);
