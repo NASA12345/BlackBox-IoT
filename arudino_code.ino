@@ -13,7 +13,6 @@
 #include <SHA256.h>
 #include <string.h>
 
-// Shared secret key (must match driver app; keep secure!)
 const char* HMAC_SECRET = "8fcd141aa2f81eca1970c7d013e5deebdd77884f4ebf6e03db7dc308b5964458";
 
 // -------- CONFIG --------
@@ -39,6 +38,10 @@ bool tamper = false;
 bool mpuReady = false;
 bool deviceConnected = false;
 
+// -------- WARMUP --------
+int warmupCount = 0;
+const int WARMUP_READINGS = 3;
+
 // -------- BUFFER --------
 String buffer[MAX_BUFFER];
 int bufferStart = 0;
@@ -47,12 +50,9 @@ int bufferEnd = 0;
 // -------- BUFFER FUNCTIONS --------
 void addToBuffer(String data) {
   int next = (bufferEnd + 1) % MAX_BUFFER;
-
-  // overwrite oldest if full
   if (next == bufferStart) {
     bufferStart = (bufferStart + 1) % MAX_BUFFER;
   }
-
   buffer[bufferEnd] = data;
   bufferEnd = next;
 }
@@ -63,24 +63,21 @@ bool bufferEmpty() {
 
 String popBuffer() {
   if (bufferEmpty()) return "";
-
   String data = buffer[bufferStart];
   bufferStart = (bufferStart + 1) % MAX_BUFFER;
   return data;
 }
 
-// -------- HMAC COMPUTATION --------
+// -------- HMAC --------
 String computeHMAC(String data) {
   SHA256 sha256;
   uint8_t hash[32];
   char hexHash[65];
 
-  // HMAC-SHA256
   sha256.resetHMAC((uint8_t*)HMAC_SECRET, strlen(HMAC_SECRET));
   sha256.update((uint8_t*)data.c_str(), data.length());
   sha256.finalizeHMAC((uint8_t*)HMAC_SECRET, strlen(HMAC_SECRET), hash, sizeof(hash));
 
-  // Convert to hex string
   for (int i = 0; i < 32; i++) {
     sprintf(&hexHash[i * 2], "%02x", hash[i]);
   }
@@ -101,7 +98,6 @@ class MyServerCallbacks: public BLEServerCallbacks {
     deviceConnected = false;
     delay(100);
     BLEDevice::startAdvertising();
-    Serial.println("🔁 Advertising Restarted");
   }
 };
 
@@ -121,10 +117,12 @@ void setup() {
     Serial.println("❌ MPU6050 NOT found");
   }
 
+  // // ✅ Warm-up delay
+  // Serial.println("⏳ Warming up sensors...");
+  // delay(3000);
+
   // BLE Init
   BLEDevice::init("BLACKBOX_101");
-  
-  // Request larger MTU (up to 512 bytes)
   BLEDevice::setMTU(512);
 
   BLEServer *pServer = BLEDevice::createServer();
@@ -139,14 +137,11 @@ void setup() {
                     );
 
   pCharacteristic->addDescriptor(new BLE2902());
-
   pService->start();
 
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);
-  pAdvertising->setMinPreferred(0x12);
 
   BLEDevice::startAdvertising();
 
@@ -155,6 +150,14 @@ void setup() {
 
 // -------- LOOP --------
 void loop() {
+
+  // ✅ Skip first few readings
+  if (warmupCount < WARMUP_READINGS) {
+    warmupCount++;
+    Serial.println("⏳ Stabilizing...");
+    delay(2000);
+    return;
+  }
 
   // --- Tamper ---
   tamper = (digitalRead(REED_PIN) == HIGH);
@@ -177,10 +180,17 @@ void loop() {
   float temperature = dht.readTemperature();
   float humidity = dht.readHumidity();
 
+  // ✅ Skip invalid DHT readings
+  if (isnan(temperature) || isnan(humidity)) {
+    Serial.println("⚠️ DHT read failed, skipping...");
+    delay(2000);
+    return;
+  }
+
   // --- JSON DATA ---
   String dataJson = "{";
-  dataJson += "\"temp\":" + String(isnan(temperature) ? 0 : temperature, 1) + ",";
-  dataJson += "\"humidity\":" + String(isnan(humidity) ? 0 : humidity, 1) + ",";
+  dataJson += "\"temp\":" + String(temperature, 1) + ",";
+  dataJson += "\"humidity\":" + String(humidity, 1) + ",";
   dataJson += "\"tamper\":" + String(tamper ? 1 : 0) + ",";
   dataJson += "\"ax\":" + String(ax, 2) + ",";
   dataJson += "\"ay\":" + String(ay, 2) + ",";
@@ -190,41 +200,33 @@ void loop() {
   dataJson += "\"gz\":" + String(gz, 2);
   dataJson += "}";
 
-  // --- COMPUTE HMAC ---
   String hmac = computeHMAC(dataJson);
 
-  // --- FULL PAYLOAD ---
   String payload = "{";
   payload += "\"data\":" + dataJson + ",";
   payload += "\"hmac\":\"" + hmac + "\"";
   payload += "}";
 
-  // -------- SEND / BUFFER LOGIC --------
+  // -------- SEND / BUFFER --------
   if (deviceConnected) {
 
-    // send buffered data first
     if (!bufferEmpty()) {
       String oldData = popBuffer();
       pCharacteristic->setValue(oldData.c_str());
       pCharacteristic->notify();
-
       Serial.println("📤 Buffered Sent: " + oldData);
-      delay(5000); // fast replay
+      delay(5000);
     } 
     else {
-      // live data with HMAC
       pCharacteristic->setValue(payload.c_str());
       pCharacteristic->notify();
-
       Serial.println("📡 Live: " + payload);
-      delay(5000); // normal rate
+      delay(5000);
     }
 
   } else {
-    // store data when disconnected
     addToBuffer(payload);
     Serial.println("💾 Stored: " + payload);
-
     delay(5000);
   }
 }
