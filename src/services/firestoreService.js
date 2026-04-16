@@ -10,10 +10,12 @@ import {
   setDoc,
   doc,
   arrayUnion,
+  runTransaction,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import blockchainService from './blockchainService';
 
 const DEFAULT_ALERT_THRESHOLDS = {
   temperatureMax: 35,
@@ -36,6 +38,95 @@ const DEFAULT_SERVICES_CONFIG = {
 const ALERT_COOLDOWN_MS = 2 * 60 * 1000;
 const DEFAULT_GEOFENCE_RADIUS_KM = 0.5;
 const POLYGON_GEOFENCE_COLLECTION = 'tripGeofencePolygons';
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const anchorPayloadWithRetry = async (payload, maxRetries = 2) => {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      return await blockchainService.hashAndStoreTripData(payload);
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        await sleep(750 * (attempt + 1));
+      }
+    }
+  }
+
+  throw lastError;
+};
+
+const updateTripArrayRecordById = async (tripId, fieldName, recordId, patch) => {
+  const tripRef = doc(db, 'trips', tripId);
+
+  await runTransaction(db, async (transaction) => {
+    const tripSnap = await transaction.get(tripRef);
+    if (!tripSnap.exists()) return;
+
+    const records = tripSnap.data()?.[fieldName];
+    if (!Array.isArray(records)) return;
+
+    const nextRecords = records.map((record) => {
+      if (record?.id !== recordId) return record;
+
+      // Never downgrade a successfully anchored record back to failed.
+      if (record.blockchainStatus === 'confirmed' && patch.blockchainStatus === 'failed') {
+        return record;
+      }
+
+      return {
+        ...record,
+        ...patch,
+      };
+    });
+
+    transaction.update(tripRef, {
+      [fieldName]: nextRecords,
+    });
+  });
+};
+
+const anchorTripCreationInBackground = (tripRef, payload) => {
+  void (async () => {
+    try {
+      const { hash, txHash } = await anchorPayloadWithRetry(payload);
+      await updateDoc(tripRef, {
+        blockchainHash: hash,
+        blockchainTxHash: txHash,
+        blockchainNetwork: 'sepolia',
+        blockchainStatus: 'confirmed',
+      });
+    } catch (blockchainError) {
+      console.error('Blockchain hash store failed:', blockchainError);
+      await updateDoc(tripRef, {
+        blockchainStatus: 'failed',
+        blockchainNetwork: 'sepolia',
+      });
+    }
+  })();
+};
+
+const anchorTripArrayRecordInBackground = (tripId, fieldName, recordId, payload, errorLabel) => {
+  void (async () => {
+    try {
+      const { hash, txHash } = await anchorPayloadWithRetry(payload);
+      await updateTripArrayRecordById(tripId, fieldName, recordId, {
+        blockchainHash: hash,
+        blockchainTxHash: txHash,
+        blockchainNetwork: 'sepolia',
+        blockchainStatus: 'confirmed',
+      });
+    } catch (blockchainError) {
+      console.error(`${errorLabel}:`, blockchainError);
+      await updateTripArrayRecordById(tripId, fieldName, recordId, {
+        blockchainStatus: 'failed',
+        blockchainNetwork: 'sepolia',
+      });
+    }
+  })();
+};
 
 const normalizePolygonPoints = (points) => {
   if (!Array.isArray(points)) return [];
@@ -324,12 +415,48 @@ export const createTrip = async (userId, tripData) => {
       assignedDriver: null,
       alerts: [],
       trackingData: [],
+      blockchainHash: null,
+      blockchainTxHash: null,
+      blockchainNetwork: 'sepolia',
+      blockchainStatus: 'pending',
     });
 
     await Promise.all([
       savePolygonGeofenceIfNeeded(tripRef.id, 'start', normalizedStartGeofence),
       savePolygonGeofenceIfNeeded(tripRef.id, 'end', normalizedEndGeofence),
     ]);
+
+    const tripDataForHash = {
+      recordType: 'trip',
+      tripId: tripRef.id,
+      userId,
+      ...restTripData,
+      startGeofence: {
+        geofenceId: normalizedStartGeofence.geofenceId,
+        type: normalizedStartGeofence.type,
+        latitude: normalizedStartGeofence.latitude,
+        longitude: normalizedStartGeofence.longitude,
+        center: normalizedStartGeofence.center,
+        radiusKm: normalizedStartGeofence.radiusKm,
+        polygonPointCount: normalizedStartGeofence.polygonPointCount,
+      },
+      endGeofence: {
+        geofenceId: normalizedEndGeofence.geofenceId,
+        type: normalizedEndGeofence.type,
+        latitude: normalizedEndGeofence.latitude,
+        longitude: normalizedEndGeofence.longitude,
+        center: normalizedEndGeofence.center,
+        radiusKm: normalizedEndGeofence.radiusKm,
+        polygonPointCount: normalizedEndGeofence.polygonPointCount,
+      },
+      servicesConfig: normalizedServices,
+      alertThresholds: normalizedThresholds,
+      alerts: [],
+      trackingData: [],
+      status: 'created',
+      createdAt: new Date().toISOString(),
+    };
+    anchorTripCreationInBackground(tripRef, tripDataForHash);
 
     return tripRef.id;
   } catch (error) {
@@ -463,14 +590,36 @@ export const addTrackingData = async (tripId, trackingData) => {
 
     const trip = { id: tripSnap.id, ...tripSnap.data() };
     const servicesConfig = normalizeServicesConfig(trip?.servicesConfig);
+    const entryId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const trackingTimestampIso = new Date().toISOString();
     const trackingEntry = {
       ...buildTrackingEntryByServices(trackingData, servicesConfig),
+      id: entryId,
       timestamp: Timestamp.now(),
+      blockchainHash: null,
+      blockchainTxHash: null,
+      blockchainNetwork: 'sepolia',
+      blockchainStatus: 'pending',
     };
 
     await updateDoc(tripRef, {
       trackingData: arrayUnion(trackingEntry),
     });
+
+    const trackingPayloadForHash = {
+      recordType: 'tracking',
+      tripId,
+      trackingId: entryId,
+      timestamp: trackingTimestampIso,
+      ...buildTrackingEntryByServices(trackingData, servicesConfig),
+    };
+    anchorTripArrayRecordInBackground(
+      tripId,
+      'trackingData',
+      entryId,
+      trackingPayloadForHash,
+      'Blockchain tracking hash store failed'
+    );
 
     const geofenceShapes = await getTripGeofenceShapes(trip);
     const generatedAlerts = buildAlertsFromTracking(trip, trackingEntry, geofenceShapes);
@@ -658,15 +807,38 @@ export const subscribeToTrackingData = (tripId, callback) => {
 
 export const addAlert = async (tripId, alertData) => {
   try {
+    const alertId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const timestampIso = new Date().toISOString();
     const alert = {
       ...alertData,
       timestamp: Timestamp.now(),
-      id: Date.now().toString(),
+      id: alertId,
+      blockchainHash: null,
+      blockchainTxHash: null,
+      blockchainNetwork: 'sepolia',
+      blockchainStatus: 'pending',
     };
+
     await updateDoc(doc(db, 'trips', tripId), {
       alerts: arrayUnion(alert),
     });
-    return alert.id;
+
+    const alertPayloadForHash = {
+      recordType: 'alert',
+      tripId,
+      alertId,
+      timestamp: timestampIso,
+      ...alertData,
+    };
+    anchorTripArrayRecordInBackground(
+      tripId,
+      'alerts',
+      alertId,
+      alertPayloadForHash,
+      'Blockchain alert hash store failed'
+    );
+
+    return alertId;
   } catch (error) {
     console.error('Error adding alert:', error);
     throw error;

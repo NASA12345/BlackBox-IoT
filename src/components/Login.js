@@ -60,7 +60,7 @@ const Login = () => {
               BB
             </div>
           </div>
-          <CardTitle className="text-3xl font-bold">BlackBox Insurance</CardTitle>
+          <CardTitle className="text-3xl font-bold">BlackBox</CardTitle>
           <CardDescription className="text-base">Track your journey, stay protected</CardDescription>
         </CardHeader>
 

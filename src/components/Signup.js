@@ -89,7 +89,7 @@ const Signup = () => {
             </div>
           </div>
           <CardTitle className="text-3xl font-bold">Create Your Account</CardTitle>
-          <CardDescription className="text-base">Join BlackBox Insurance to start tracking your journeys</CardDescription>
+          <CardDescription className="text-base">Join BlackBox to start tracking your journeys</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-6">
