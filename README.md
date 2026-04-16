@@ -33,7 +33,13 @@ This platform creates a timeline of:
 
 ---
 
-## 2) Visual System Flow
+## 2) Circuit Diagram
+
+![BLACKBOX Circuit Diagram](Docs/Circuit%20Diagram.png)
+
+---
+
+## 3) Visual System Flow
 
 ```mermaid
 flowchart LR
@@ -48,7 +54,7 @@ flowchart LR
 
 ---
 
-## 3) Feature Matrix
+## 4) Feature Matrix
 
 | Domain | Capability |
 |---|---|
@@ -64,7 +70,7 @@ flowchart LR
 
 ---
 
-## 4) Data Quality Guards Built In
+## 5) Data Quality Guards Built In
 
 Current behavior includes these safeguards:
 
@@ -75,7 +81,7 @@ Current behavior includes these safeguards:
 
 ---
 
-## 5) Tech Stack
+## 6) Tech Stack
 
 - Frontend: React 18, React Router 6, Tailwind utility styling, Leaflet maps
 - Realtime + Auth + Storage: Firebase (Firestore + Auth)
@@ -85,7 +91,7 @@ Current behavior includes these safeguards:
 
 ---
 
-## 6) Project Structure
+## 7) Project Structure
 
 ```text
 BB2/
@@ -119,7 +125,7 @@ BB2/
 
 ---
 
-## 7) Environment Variables
+## 8) Environment Variables
 
 Configure in frontend environment file.
 
@@ -154,7 +160,7 @@ If blockchain keys are missing, blockchain service auto-disables and app still r
 
 ---
 
-## 8) Local Setup
+## 9) Local Setup
 
 ## Prerequisites
 
@@ -179,7 +185,7 @@ http://localhost:3000
 
 ---
 
-## 9) First-Time Firebase Setup (Short)
+## 10) First-Time Firebase Setup (Short)
 
 1. Create Firebase project.
 2. Enable Email/Password auth.
@@ -195,7 +201,7 @@ Detailed guides:
 
 ---
 
-## 10) Operational Workflow
+## 11) Operational Workflow
 
 ## User Path
 
@@ -222,7 +228,7 @@ Trip assignment is typically done through Firestore admin workflow described in 
 
 ---
 
-## 11) Alert Catalog
+## 12) Alert Catalog
 
 These alerts are present in the current flow:
 
@@ -242,7 +248,7 @@ Threshold source:
 
 ---
 
-## 12) Realtime Behavior
+## 13) Realtime Behavior
 
 The system uses Firestore onSnapshot listeners.
 
@@ -253,7 +259,7 @@ Meaning:
 
 ---
 
-## 13) ESP32 Payload Expectations
+## 14) ESP32 Payload Expectations
 
 Typical payload shape handled by the app:
 
@@ -278,7 +284,7 @@ The app re-computes HMAC over the data object string and rejects mismatches.
 
 ---
 
-## 14) Security and Integrity Notes
+## 15) Security and Integrity Notes
 
 - BLE payload integrity check with HMAC.
 - Firebase Auth for role-based access.
