@@ -36,6 +36,8 @@ This platform creates a timeline of:
 ## 2) Circuit Diagram
 
 ![BLACKBOX Circuit Diagram](Docs/Circuit%20Diagram.png)
+<br></br>
+![BLACKBOX IMAGE](Docs/Image.jpeg)
 
 ---
 
