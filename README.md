@@ -41,16 +41,7 @@ This platform creates a timeline of:
 
 ## 3) Visual System Flow
 
-```mermaid
-flowchart LR
-  U[User App] -->|Create Trip + Thresholds| FS[(Firestore)]
-  D[Driver App] -->|BLE Sensor Data| C[Driver Dashboard]
-  C -->|GPS + Sensor Ping| FS
-  FS -->|onSnapshot Realtime| UM[User Trip Modal]
-  FS -->|Auto Alert Generation| A[Alerts Array]
-  FS -->|Hash Payload| BC[Sepolia Hash Registry]
-  BC --> FS
-```
+![BLACKBOX Workflow](Docs/Workflow.png)
 
 ---
 
