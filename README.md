@@ -87,33 +87,21 @@ Current behavior includes these safeguards:
 ## 7) Project Structure
 
 ```text
-BB2/
-├─ backend/
-│  ├─ .env.example
-│  └─ src/
-├─ frontend/
-│  ├─ arudino_code.ino
-│  ├─ package.json
-│  ├─ public/
-│  ├─ build/
-│  └─ src/
-│     ├─ components/
-│     ├─ contexts/
-│     ├─ services/
-│     ├─ styles/
-│     ├─ lib/
-│     ├─ App.js
-│     └─ firebase.js
-├─ docs/
-│  ├─ QUICKSTART.md
-│  ├─ SETUP.md
-│  ├─ FIREBASE_SETUP.md
-│  ├─ API_SCHEMA.md
-│  ├─ COMPLETE_REFERENCE.md
-│  └─ DRIVER_ASSIGNMENT.md
-├─ START_HERE.md
-├─ VERIFICATION_CHECKLIST.md
-└─ README.md
+
+/
+├─ arudino_code.ino
+├─ package.json
+├─ public/
+├─ build/
+└─ src/
+      ├─ components/
+      ├─ contexts/
+      ├─ services/
+      ├─ styles/
+      ├─ lib/
+      ├─ App.js
+      └─ firebase.js
+
 ```
 
 ---
