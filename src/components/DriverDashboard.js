@@ -308,9 +308,6 @@ const DriverDashboard = () => {
         throw new Error('Web Bluetooth is not supported on this device');
       }
 
-      // Get location permission + first valid fix before sensor streaming.
-      await ensureGpsReady();
-
       // Connect to device
       await bluetoothService.connectToDevice();
       setBtConnected(true);
@@ -363,6 +360,9 @@ const DriverDashboard = () => {
           });
         }
       });
+
+      // Get location permission + first valid fix before accepting tracking writes.
+      await ensureGpsReady();
 
       // Keep live GPS updates running while connected.
       startGPSTracking();
