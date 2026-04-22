@@ -19,6 +19,7 @@ const char* HMAC_SECRET = "8fcd141aa2f81eca1970c7d013e5deebdd77884f4ebf6e03db7dc
 #define DHTPIN 4
 #define DHTTYPE DHT11
 #define REED_PIN 13
+#define LED_PIN 2
 
 #define MAX_BUFFER 50
 
@@ -46,6 +47,11 @@ const int WARMUP_READINGS = 3;
 String buffer[MAX_BUFFER];
 int bufferStart = 0;
 int bufferEnd = 0;
+
+// -------- LED (INDEPENDENT) --------
+unsigned long lastBlinkTime = 0;
+const int blinkInterval = 200;
+bool ledState = false;
 
 // -------- BUFFER FUNCTIONS --------
 void addToBuffer(String data) {
@@ -86,6 +92,28 @@ String computeHMAC(String data) {
   return String(hexHash);
 }
 
+// -------- LED HANDLER (SEPARATE) --------
+void handleLED() {
+  if (deviceConnected) {
+    digitalWrite(LED_PIN, HIGH);
+  } else {
+    if (millis() - lastBlinkTime >= blinkInterval) {
+      lastBlinkTime = millis();
+      ledState = !ledState;
+      digitalWrite(LED_PIN, ledState);
+    }
+  }
+}
+
+// -------- NON-BLOCKING DELAY --------
+void smartDelay(int ms) {
+  int steps = ms / 50;
+  for (int i = 0; i < steps; i++) {
+    handleLED();
+    delay(50);
+  }
+}
+
 // -------- BLE CALLBACK --------
 class MyServerCallbacks: public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) {
@@ -96,6 +124,7 @@ class MyServerCallbacks: public BLEServerCallbacks {
   void onDisconnect(BLEServer* pServer) {
     Serial.println("❌ Client Disconnected");
     deviceConnected = false;
+
     delay(100);
     BLEDevice::startAdvertising();
   }
@@ -106,8 +135,10 @@ void setup() {
   Serial.begin(115200);
 
   pinMode(REED_PIN, INPUT_PULLUP);
-  dht.begin();
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
 
+  dht.begin();
   Wire.begin(21, 22);
 
   if (mpu.begin()) {
@@ -116,10 +147,6 @@ void setup() {
   } else {
     Serial.println("❌ MPU6050 NOT found");
   }
-
-  // // ✅ Warm-up delay
-  // Serial.println("⏳ Warming up sensors...");
-  // delay(3000);
 
   // BLE Init
   BLEDevice::init("BLACKBOX_101");
@@ -151,11 +178,13 @@ void setup() {
 // -------- LOOP --------
 void loop() {
 
-  // ✅ Skip first few readings
+  handleLED(); // ALWAYS RUN
+
+  // ✅ Warmup
   if (warmupCount < WARMUP_READINGS) {
     warmupCount++;
     Serial.println("⏳ Stabilizing...");
-    delay(2000);
+    smartDelay(2000);
     return;
   }
 
@@ -180,10 +209,9 @@ void loop() {
   float temperature = dht.readTemperature();
   float humidity = dht.readHumidity();
 
-  // ✅ Skip invalid DHT readings
   if (isnan(temperature) || isnan(humidity)) {
     Serial.println("⚠️ DHT read failed, skipping...");
-    delay(2000);
+    smartDelay(2000);
     return;
   }
 
@@ -215,18 +243,18 @@ void loop() {
       pCharacteristic->setValue(oldData.c_str());
       pCharacteristic->notify();
       Serial.println("📤 Buffered Sent: " + oldData);
-      delay(5000);
+      smartDelay(5000);
     } 
     else {
       pCharacteristic->setValue(payload.c_str());
       pCharacteristic->notify();
       Serial.println("📡 Live: " + payload);
-      delay(5000);
+      smartDelay(5000);
     }
 
   } else {
     addToBuffer(payload);
     Serial.println("💾 Stored: " + payload);
-    delay(5000);
+    smartDelay(5000);
   }
 }
