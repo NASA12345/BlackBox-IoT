@@ -31,6 +31,10 @@ This platform creates a timeline of:
 - when anomalies happened
 - what was recorded on-chain
 
+### Demo Video
+
+[Watch the demo](https://youtu.be/NZF8RdI5t04?si=OGg3YdtPAsVK5fXV)
+
 ---
 
 ## 2) Circuit Diagram
