@@ -179,11 +179,6 @@ http://localhost:3000
 5. Put config in frontend env.
 6. Start app and sign up test users.
 
-Detailed guides:
-- docs/FIREBASE_SETUP.md
-- docs/SETUP.md
-- docs/QUICKSTART.md
-
 ---
 
 ## 11) Operational Workflow
